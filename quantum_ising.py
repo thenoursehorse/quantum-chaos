@@ -44,33 +44,34 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(vars(args))
                        
-    ensemble_sizes = np.array([400, 500, 600, 700, 800, 900, 1000])
+    #ensemble_sizes = np.array([400, 500, 600, 700, 800, 900, 1000])
+    ensemble_sizes = np.array([5])
     num_ensembles = len(ensemble_sizes)
     
     d = args.N
-    bosons = []
+    spins = []
     haars = []
     start = time.time()
     for num_ensembles in ensemble_sizes:
-        bosons.append( TimeIsingChainEnsemble(num_ensembles=num_ensembles, 
-                                                N=args.N,
-                                                g=args.g,
-                                                alpha=args.alpha,
-                                                periodic=args.periodic) 
+        spins.append( TimeIsingChainEnsemble(num_ensembles=num_ensembles, 
+                                             N=args.N,
+                                             g=args.g,
+                                             alpha=args.alpha,
+                                             periodic=args.periodic) 
                      )
 
         haars.append( HaarEnsemble(num_ensembles=num_ensembles, d=d) )
     end = time.time()
     print("Ensemble construction took", end-start)
 
-    # Time evolve bosons
-    #for E in bosons:
+    # Time evolve
+    #for E in spins:
     #    E.evolve(dT=1000)
 
     k_max = 2
     sum_type = 'einsum_fast'
     start = time.time()
-    F_U = np.asarray([ensemble.frame_potential(k_max=k_max, sum_type=sum_type) for ensemble in bosons]).T
+    F_U = np.asarray([ensemble.frame_potential(k_max=k_max, sum_type=sum_type) for ensemble in spins]).T
     F_H = np.asarray([ensemble.frame_potential(k_max=k_max, sum_type=sum_type) for ensemble in haars]).T
     end = time.time()
     print("Frame potential took", end-start)

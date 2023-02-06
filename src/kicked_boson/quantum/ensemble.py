@@ -1,6 +1,8 @@
 import numpy as np
 import qutip as qt
 
+import matplotlib.pyplot as plt
+
 from kicked_boson.quantum.operators import *
     
 def frame_potential_qobj(U_list, k_max=1):
@@ -60,10 +62,11 @@ class Ensemble(object):
     def __init__(self, num_ensembles):
         self._num_ensembles = num_ensembles
         
+        self.T = 1
         self._d = None
         self._U_list = None
         self._H_eff_list = None
-        self._eigenvalues_list = None
+        self._eigenenergies_list = None
 
     def run(self):
         self.make_operators()
@@ -71,43 +74,84 @@ class Ensemble(object):
         self._d = self._U_list[0].shape[0]
         
         self._H_eff_list = [self.make_H_eff(self._U_list[m]) for m in range(self._num_ensembles)]
-        self._eigenvalues_list = [self.make_eigenvalues(self._H_eff_list[m]) for m in range(self._num_ensembles)]
+        self._eigenenergies_list = [self.make_eigenvalues(self._H_eff_list[m]) for m in range(self._num_ensembles)]
 
     def make_H_eff(self, U):
-        return -1j * U.logm()
+        return 1j * U.logm() / self.T
 
     def make_eigenvalues(self, H_eff):
         return H_eff.eigenenergies()
 
-    def form_factor(self, order, t=1):
+    def check_generic_spectrum(self):
+        return None
+
+    def level_spacings(self):
+        return np.diff(self._eigenenergies_list)
+
+    def level_ratios(self):
+        s = self.level_spacings()
+        s_shift_up = np.roll(s,-1,axis=1)
+        return np.minimum(s_shift_up[:,1:], s[:,1:]) / np.maximum(s_shift_up[:,1:], s[:,1:])
+
+    def plot_spacings(self, m=0):
+        s = self.level_spacings()[m]
+        x = np.linspace(0,max(s))
+        poiss = np.exp(-x)
+        goe = (np.pi / 2.0) * x * np.exp(-np.pi * x**2 / 4.0)
+        gue = (32.0 / np.pi**2) * x**2 * np.exp(-4.0 * x**2 / np.pi)
+        plt.plot(x, poiss, label='Poisson')
+        plt.plot(x, goe, label='GOE')
+        plt.plot(x, gue, label='GOE')
+        # FIXME data is normalied diff to the others, so is wrong
+        plt.hist(s, bins='sturges', density=True)
+        plt.show()
+
+    def plot_ratios(self, m=0):
+        r = self.level_ratios()[m]
+        x = np.linspace(0,1)
+        poiss = (2.0 / ((1 + x)**2))
+        goe = (27.0 / 4.0) * (x + x**2) / ((1 + x + x**2)**(5.0/2.0))
+        plt.plot(x, poiss, label='Poisson')
+        plt.plot(x, goe, label='GOE')
+        plt.hist(r, bins='sturges', density=True)
+        plt.show()
+
+    def spectral_form_factor(self, order, t=1):
         c = [0 for _ in range(self._num_ensembles)]
         
         if order == 2:
-            for m,e in enumerate(self._eigenvalues_list):
-                c[m] = np.sum(np.exp(1j*(e[:,None] - e)*t)).real
+            for m,e in enumerate(self._eigenenergies_list):
+                c[m] = np.sum(np.exp(1j*(e[:,None] - e)*t)).real / self._d**2
         
         elif order == 3:
-            for m,e in enumerate(self._eigenvalues_list):
-                c[m] = 0
+            for m,e in enumerate(self._eigenenergies_list):
+                c[m] = 0 / self._d**3
         
         elif order == 4:
-            for m,e in enumerate(self._eigenvalues_list):
+            for m,e in enumerate(self._eigenenergies_list):
                 val = e[:,None] + e
                 val = val[:,None] - e[:,None]
                 val = val[:,None] - e[:,None,None]
-                c[m] = np.sum(np.exp(1j*val*t)).real
+                c[m] = np.sum(np.exp(1j*val*t)).real / self._d**4
 
         return np.asarray(c)
 
     def frame_potential_ff(self, t=1):
-        c2 = self.form_factor(2, t)
-        c4 = self.form_factor(4, t)
-        F = (self.d**2 / (self.d**2 - 1)) * np.sum( self.d**2 * c4 - 2 * c2 + 1 )
-        return F / self._num_ensembles
+        c2 = self.spectral_form_factor(2, t)
+        c4 = self.spectral_form_factor(4, t)
+        #F = (self.d**2 / (self.d**2 - 1)) * ( np.sum(self.d**2 * c4 - 2 * c2) + 1 )
+        F = (self.d**2 / (self.d**2 - 1)) * self.d**2 * c4 - 2 * c2 + 1
+        return np.sum(F) / self._num_ensembles
+        #F = (self.d**2 / (self.d**2 - 1)) * (self.d**2 * c4[0] - 2 * c2[0] + 1)
+        #return F
 
-    def evolve(self, dT=1):
+    def evolve(self, T):
+        dT = T-self.T
+        self.T = T
         for m in range(self._num_ensembles):
-            self._U_list[m] = self._U_list[m]**dT
+            self._U_list[m] = self._U_list[m]**(dT+1)
+        self._H_eff_list = [self.make_H_eff(self._U_list[m]) for m in range(self._num_ensembles)]
+        self._eigenenergies_list = [self.make_eigenvalues(self._H_eff_list[m]) for m in range(self._num_ensembles)]
 
     def frame_potential(self, k_max=1, sum_type='einsum_fast'):
         if sum_type == 'einsum':
@@ -141,6 +185,14 @@ class Ensemble(object):
     @property
     def unitaries(self):
         return self._U_list
+    
+    @property
+    def eigenenergies(self):
+        return self._eigenenergies_list
+    
+    @property
+    def H_effs(self):
+        return self._H_eff_list
 
     @property
     def d(self):
