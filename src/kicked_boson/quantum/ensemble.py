@@ -101,7 +101,7 @@ class Ensemble(object):
         gue = (32.0 / np.pi**2) * x**2 * np.exp(-4.0 * x**2 / np.pi)
         plt.plot(x, poiss, label='Poisson')
         plt.plot(x, goe, label='GOE')
-        plt.plot(x, gue, label='GOE')
+        plt.plot(x, gue, label='GUE')
         # FIXME data is normalied diff to the others, so is wrong
         plt.hist(s, bins='sturges', density=True)
         plt.show()

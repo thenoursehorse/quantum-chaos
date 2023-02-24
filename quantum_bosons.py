@@ -69,7 +69,10 @@ if __name__ == '__main__':
     parser.add_argument('-plot', type=int, default=1)
     args = parser.parse_args()
     print(vars(args))
-                       
+
+    # FIXME do a theta/phi varying plot and it's deviation from a GUE level statistics
+    # and Poisson level statistics.
+
     #ensemble_size = [d**(2*k)] # recommended at least d**(2*k)
     #ensemble_sizes = np.array([400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000])
     #ensemble_sizes = np.array([400, 500, 600, 700, 800, 900, 1000])
