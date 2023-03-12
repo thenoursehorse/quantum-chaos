@@ -90,7 +90,7 @@ class Ensemble(object):
 
     def level_ratios(self):
         s = self.level_spacings()
-        s_shift_up = np.roll(s,-1,axis=1)
+        s_shift_up = np.roll(s,-1,axis=-1)
         return np.minimum(s_shift_up[:,1:], s[:,1:]) / np.maximum(s_shift_up[:,1:], s[:,1:])
 
     def plot_spacings(self, m=0):
