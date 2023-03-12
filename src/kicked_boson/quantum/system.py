@@ -1,7 +1,7 @@
 
 import numpy as np
 import scipy
-import qutip as qt
+#import qutip as qt
 from copy import deepcopy
 
 import seaborn as sns

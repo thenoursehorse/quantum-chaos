@@ -3,7 +3,7 @@ import scipy
 from scipy.stats import ks_1samp as cdftest
 import seaborn as sns
 import matplotlib.pyplot as plt
-import pandas as pd
+#import pandas as pd
 
 # PDF from 10.1103/PhysRevLett.110.084101
 def ratio_poiss(x):

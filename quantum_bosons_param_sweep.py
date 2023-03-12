@@ -12,7 +12,6 @@ import seaborn as sns
 import os
 
 from kicked_boson.quantum.system import BosonChain
-from kicked_boson.functions import ecdf, chi_distance
 
 golden_ratio = (1 + 5 ** 0.5) / 2
 

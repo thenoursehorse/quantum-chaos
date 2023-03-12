@@ -7,8 +7,6 @@ from scipy.optimize import curve_fit
 import argparse
 import textwrap
 
-import qutip as qt
-
 from kicked_boson.quantum.system import BosonChain
 
 golden_ratio = (1 + 5 ** 0.5) / 2
