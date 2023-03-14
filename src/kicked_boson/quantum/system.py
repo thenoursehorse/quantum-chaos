@@ -167,8 +167,8 @@ class GenericSystem(object):
 
             #c_l = np.sum( np.exp(2*1j*e*t) )
             #c_r = np.sum( np.exp(-1j*e*t) )
-            c_l = np.sum( np.exp(2*1j * t[:, None, None] * e) , axsis=-1)
-            c_r = np.sum( np.exp(-1j * t[:, None, None] * e) , axsis=-1)
+            c_l = np.sum( np.exp(2*1j * t[:, None, None] * e) , axis=-1)
+            c_r = np.sum( np.exp(-1j * t[:, None, None] * e) , axis=-1)
             c = c_l * c_r * c_r
             c /= self._d**3
         
@@ -185,9 +185,20 @@ class GenericSystem(object):
             c = c.real**2
             c /= self._d**4
 
+        elif order == 41: # same as order=3 but with a minus sign
+            c_l = np.sum( np.exp(-2*1j * t[:, None, None] * e) , axis=-1)
+            c_r = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
+            c = c_r * c_r * c_l
+            # FIXME scale here
+        
+        elif order == 42:
+            c = np.sum( np.exp(2*1j * t[:, None, None] * e) , axis=-1)
+            c *= c.conj()
+            # FIXME scale here
+
         return c
     
-    def set_form_factor(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1):
+    def set_form_factor(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, minimal=False):
         #Nt = int(np.ceil((Tf - Ti + 1) / dT))
         #self._time = np.linspace(Ti, Tf, Nt, endpoint=True)
         self._time = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
@@ -207,13 +218,34 @@ class GenericSystem(object):
         
         self._c4_avg = np.mean(self._c4, axis=-1)
         self._c4_err = np.std(self._c4, axis=-1)
-    
-    def frame_potential(self):
+
+        if not minimal:
+            self._c41 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
+            self._c42 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
+            for m in range(N_batch):
+                self._c41[:, m*batch_size:(m+1)*batch_size] = \
+                    self.spectral_form_factor(self._eigenenergies[m*batch_size:(m+1)*batch_size], 41, t=self._time)
+                self._c42[:, m*batch_size:(m+1)*batch_size] = \
+                    self.spectral_form_factor(self._eigenenergies[m*batch_size:(m+1)*batch_size], 42, t=self._time)
+            
+            self._c41_avg = np.mean(self._c41, axis=-1)
+            self._c41_err = np.std(self._c41, axis=-1)
+            self._c42_avg = np.mean(self._c42, axis=-1)
+            self._c42_err = np.std(self._c42, axis=-1)
+
+    def frame_potential(self, k=1):
         if not hasattr(self, '_c4_avg'):
             self.set_form_factor()
         if not hasattr(self, '_c2_avg'):
             self.set_form_factor()
-        return frame_potential(self._d, self._c2_avg, self._c4_avg)
+        if k == 2:
+            if not hasattr(self, '_c41_avg'):
+                self.set_form_factor()
+            if not hasattr(self, '_c42_avg'):
+                self.set_form_factor()
+            return frame_potential(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
+        else:
+            return frame_potential(self._d, self._c2_avg, self._c4_avg)
     
     def loschmidt_echo(self, kind='2nd'):
         if kind == '2nd':
@@ -327,8 +359,9 @@ class GenericSystem(object):
         plot_form_factor(self._time, self._c2_avg, self._c4_avg, folder=self._folder, show=show, save=save)
 
     def plot_frame_potential(self, show=True, save=False):
-        F = self.frame_potential()
-        plot_frame_potential(self._time, F, folder=self._folder, show=show, save=save)
+        F1 = self.frame_potential(k=1)
+        F2 = self.frame_potential(k=2)
+        plot_frame_potential(self._time, F1, F2, folder=self._folder, show=show, save=save)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare

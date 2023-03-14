@@ -76,9 +76,21 @@ def chi_distance(xs, kind='ratios'):
     return respois.pvalue, resgoe.pvalue, resgue.pvalue #, resgse.pvalue
 
 
-def frame_potential(d, c2, c4):
-    return (d**2 / (d**2 - 1)) * (d**2 * c4 - 2*c2 + 1)
-    #return (1 / (d**2 - 1)) * ( (c2*d**2)**2 + d**2 - 2*(c2*d**2) )
+def frame_potential(d, c2, c4, c41=None, c42=None, k=1):
+    if k == 1:
+        return (d**2 / (d**2 - 1)) * (d**2 * c4 - 2*c2 + 1)
+    elif k == 2:
+        c2 *= d**2
+        c4 *= d**4
+        # NOTE this ends up having zero imag even though c41 is complex
+        return ( (d**4 - 8*d**2 + 6)*c4**2 +4*d**2*(d**2-9)*c4 + 4*(d**6 - 9*d**4 + 4*d*2 + 24)*c2**2 \
+                - 8*d**2*(d**4 - 11*d**2 + 18)*c2 + 2*(d**4 - 7*d**2 + 12)*c41**2 - 4*d**2*(d**2 - 9)*c42 \
+                    + (d**4 - 8*d**2 + 6)*c42**2 - 8*(d**4 - 8*d**2 + 6)*c2*c4 - 4*d*(d**2 -4)*c4*c41 \
+                        + 16*d*(d**2 - 4)*c2*c41 - 8*(d**2 + 6)*c2*c42 + 2*(d**2 + 6)*c4*c42 \
+                            -4*d*(d**2 - 4)*c41*c42 + 2*d**4*(d**4 - 12*d**2 +27) ) \
+                                / ((d-3)*(d-2)*(d-1)*d**2*(d+1)*(d+2)*(d+3) )
+    else:
+        raise ValueError('Unrecognized order !')
 
 def loschmidt_echo(d, c2=None, c4=None, kind='2nd'):
     if kind == '2nd':
@@ -178,7 +190,7 @@ def plot_form_factor(time, c2, c4, c2_err=None, c4_err=None, folder='', show=Tru
     #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
     sns.set_context("paper")
     fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
+    fig.set_size_inches(3.386,6.25)
     sns.despine()
         
     sns.lineplot(data=data, x='time', y='c2', ax=ax[0])
@@ -200,28 +212,40 @@ def plot_form_factor(time, c2, c4, c2_err=None, c4_err=None, folder='', show=Tru
     sns.reset_orig()
     plt.close(fig)
     
-def plot_frame_potential(time, F, F_err=None, folder='', show=True, save=False):
+def plot_frame_potential(time, F1, F2, folder='', show=True, save=False):
     data = {'time': time, 
-            'F': F,
-            'harr': np.ones(len(time)),
-            'asymptote': 3*np.ones(len(time))}
+            'F1': F1,
+            'F2': F2,
+            'harr1': np.ones(len(time)),
+            'harr2': 2*np.ones(len(time)),
+            'asymptote1': 3*np.ones(len(time)),
+            'asymptote2': 10*np.ones(len(time)),
+            }
         
     sns.set_theme()
     sns.set_style("white")
     #sns.set_style("ticks")
     #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
     sns.set_context("paper")
-    fig, ax = plt.subplots()
-    fig.set_size_inches(3.386,2.54)
+    fig, ax = plt.subplots(2,1)
+    fig.set_size_inches(3.386,6.25)
     sns.despine()
     
-    sns.lineplot(data=data, x='time', y='F', ax=ax)
-    sns.lineplot(data=data, x='time', y='harr', ax=ax)
-    sns.lineplot(data=data, x='time', y='asymptote', ax=ax)
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlabel(r'$t$')
-    ax.set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(1)} (t) $')
+    sns.lineplot(data=data, x='time', y='F1', ax=ax[0])
+    sns.lineplot(data=data, x='time', y='harr1', ax=ax[0])
+    sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0])
+    ax[0].set_xscale('log')
+    ax[0].set_yscale('log')
+    ax[0].set_xlabel(r'$t$')
+    ax[0].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(1)} (t) $')
+    
+    sns.lineplot(data=data, x='time', y='F2', ax=ax[1])
+    sns.lineplot(data=data, x='time', y='harr2', ax=ax[1])
+    sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1])
+    ax[1].set_xscale('log')
+    ax[1].set_yscale('log')
+    ax[1].set_xlabel(r'$t$')
+    ax[1].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(2)} (t) $')
         
     if save:
         fig.savefig(f'{folder}/frame_potential.pdf', bbox_inches="tight")
@@ -242,7 +266,7 @@ def plot_loschmidt_echo(time, le1, le2, le1_err=None, le2_err=None, folder='', s
     #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
     sns.set_context("paper")
     fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
+    fig.set_size_inches(3.386,6.25)
     sns.despine()
         
     sns.lineplot(data=data, x='time', y='le1', ax=ax[0])

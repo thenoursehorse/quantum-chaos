@@ -41,11 +41,12 @@ if __name__ == '__main__':
     parser.add_argument('-excitations', type=int, default=1)
     parser.add_argument('-periodic', type=int, default=0)
     parser.add_argument('-plot', type=int, default=1)
+    parser.add_argument('-root_folder', type=str, default='')
     args = parser.parse_args()
     print(vars(args))
 
     def run(J, Omega):
-        folder = f'figs/N{args.N}_J{J:.2f}_Omega{Omega:.2f}'
+        folder = f'{args.root_folder}/figs/N{args.N}_Nsamp{args.num_ensembles}/J{J:.2f}_Omega{Omega:.2f}'
         os.makedirs(f'{folder}', exist_ok=True)
 
         bosons = BosonChain(N=args.N,
@@ -103,4 +104,4 @@ if __name__ == '__main__':
     ax.set_ylabel(r'$p$-value')
     ax.set_xlim(xmin=Ji, xmax=Jf)
     ax.set_ylim(ymin=0, ymax=1)
-    fig.savefig(f'figs/p-values.pdf', bbox_inches="tight")
+    fig.savefig(f'{args.root_folder}/figs/N{args.N}_Nsamp{args.num_ensembles}/p-values.pdf', bbox_inches="tight")
