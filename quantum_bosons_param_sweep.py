@@ -36,7 +36,7 @@ parser.add_argument('-root_folder', type=str, default='./')
 parser.add_argument('-Ji', type=float, default=0)
 parser.add_argument('-Jf', type=float, default=5)
 parser.add_argument('-dJ', type=float, default=0.1)
-parser.add_argument('-num_cores', type=int, default=1)
+parser.add_argument('-num_cpus', type=int, default=1)
 args = parser.parse_args()
 
 #@ray.remote
@@ -70,10 +70,10 @@ if __name__ == '__main__':
 
     os.makedirs(f'{args.root_folder}/figs/', exist_ok=True)
 
-    if args.num_cores == 0:
+    if args.num_cpus == 0:
         num_cpus = psutil.cpu_count(logical=False)
     else:
-        num_cpus = args.num_cores
+        num_cpus = args.num_cpus
 
     ray.init(num_cpus=num_cpus)
 
