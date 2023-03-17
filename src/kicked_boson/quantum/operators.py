@@ -37,12 +37,18 @@ def hopping_unitary(N, theta_list, eta_list, b_list, periodic=False):
     return Op.expm()
 
 # parabolic potential
-def delta_wj(N, j, Omega=2):
-    return (4.0 * Omega / N**2) * (j - N/2.0)**2
+def delta_wj(N, j, Omega=2, scale_N=False):
+    if scale_N:
+        return (4.0 * Omega / N**2) * (j - N/2.0)**2
+    else:
+        return Omega * (j - N/2.0)**2
 
-def delta_wj_fast(x, Omega=2):
-    N = len(x)
-    return (4.0 * Omega / N**2) * x
+def delta_wj_fast(x, Omega=2, scale_N=False):
+    if scale_N:
+        N = len(x)
+        return (4.0 * Omega / N**2) * x
+    else:
+        return Omega * x
 
 def get_sigma_ops(N, axis):
     import qutip as qt

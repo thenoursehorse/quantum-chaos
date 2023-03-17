@@ -14,8 +14,7 @@ from ray.util.multiprocessing import Pool
 #from multiprocessing import Pool
 
 from kicked_boson.quantum.system import BosonChain
-
-golden_ratio = (1 + 5 ** 0.5) / 2
+from kicked_boson.functions import golden_ratio
 
 description = textwrap.dedent('''\
      Kicked bosons chain:
@@ -25,7 +24,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpForm
                                  description=description)
 parser.add_argument('-N', type=int, default=300)
 parser.add_argument('-num_ensembles', type=int, default=100)
-parser.add_argument('-eta', type=float, default=golden_ratio)
+parser.add_argument('-eta', type=float, default=golden_ratio())
 parser.add_argument('-theta_noise', type=float, default=0.0)
 parser.add_argument('-phi_noise', type=float, default=0.05)
 parser.add_argument('-eta_noise', type=float, default=0)

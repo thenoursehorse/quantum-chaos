@@ -5,6 +5,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 #import pandas as pd
 
+def golden_ratio():
+    return (1 + 5 ** 0.5) / 2
+
 # PDF from 10.1103/PhysRevLett.110.084101
 def ratio_poiss(x):
     return (2.0 / ((1 + x)**2))
@@ -52,8 +55,7 @@ def spacing_cgoe(x):
 
 def spacing_cgue(x):
     return (-4 * np.exp(-4*x**2/np.pi) * x + np.pi * scipy.special.erf(2*x/np.sqrt(np.pi)) ) / np.pi
-    
-    
+     
 def ecdf(x):
     size = x.shape[-1]
     ys = np.arange(1, size+1)/float(size)
@@ -74,8 +76,58 @@ def chi_distance(xs, kind='ratios'):
         #resgse = cdftest(xs, spacing_cgse)
         
     return respois.pvalue, resgoe.pvalue, resgue.pvalue #, resgse.pvalue
+    
+def spectral_functions(e, d, order, t):
+    '''
+    t is a numpy array of time values
+    '''
+    if order == 2:
+        #c = np.sum( np.exp(1j*(e[...,None] - e)*t) ).real / self._d**2
+            
+        #c = np.sum( np.exp(1j*e*t) )
+        c = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
+        c *= c.conj()
+        c /= d**2
+        c = c.real
+        
+    elif order == 3:
+        #val = 2*e[...,None] - e
+        #val = val[...,None] - e
+        #c = np.sum(np.exp(1j*val*t)) / self._d**3
 
+        #c_l = np.sum( np.exp(2*1j*e*t) )
+        #c_r = np.sum( np.exp(-1j*e*t) )
+        c_l = np.sum( np.exp(2*1j * t[:, None, None] * e) , axis=-1)
+        c_r = np.sum( np.exp(-1j * t[:, None, None] * e) , axis=-1)
+        c = c_l * c_r * c_r
+        c /= d**3
+        
+    elif order == 4:
+        # This will abslutely wreck my RAM
+        #val = e[...,None] + e
+        #val = val[...,None] - e
+        #val = val[...,None] - e
+        #c = np.sum(np.exp(1j*val2*t)).real / self._d**4
 
+        #c = np.sum( np.exp(1j*e*t) )
+        c = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
+        c *= c.conj()
+        c = c.real**2
+        c /= d**4
+
+    elif order == 41: # same as order=3 but with a minus sign
+        c_l = np.sum( np.exp(-2*1j * t[:, None, None] * e) , axis=-1)
+        c_r = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
+        c = c_r * c_r * c_l
+        # FIXME scale here
+        
+    elif order == 42:
+        c = np.sum( np.exp(2*1j * t[:, None, None] * e) , axis=-1)
+        c *= c.conj()
+        # FIXME scale here
+
+    return c
+    
 def frame_potential(d, c2, c4, c41=None, c42=None, k=1):
     if k == 1:
         return (d**2 / (d**2 - 1)) * (d**2 * c4 - 2*c2 + 1)
@@ -108,9 +160,31 @@ def otoc(d, c2=None, c4=None, kind='4-point'):
         return (c2 + 1) / (d + 1)
     else:
         raise ValueError('Unrecognized kind !')
-
     
-def plot_ratios(r, r_err=None, folder='', show=True, save=False):
+def plot_eigenenergies(energies, folder='./', show=True, save=False):
+    sns.set_theme()
+    sns.set_style("white")
+    sns.set_style("ticks")
+    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
+    sns.set_context("paper")
+    fig, ax = plt.subplots()
+    fig.set_size_inches(3.386,2.54)
+    sns.despine()
+
+    num_ensembles = energies.shape[0]
+    
+    for m in range(num_ensembles):
+        ax.plot(energies[m], '.')
+    ax.set_xlabel(r'$n$')
+    ax.set_ylabel(r'$E_n$')
+    if save:
+        fig.savefig(f'{self._folder}/eigenenergies.pdf', bbox_inches="tight")
+    if show:
+        plt.show()
+    sns.reset_orig()
+    plt.close(fig)
+
+def plot_ratios(r, folder='./', show=True, save=False):
     x = np.linspace(0,1)
     xs, ys = ecdf(r)
     xs_avg = np.mean(xs, axis=0)
@@ -178,8 +252,74 @@ def plot_ratios(r, r_err=None, folder='', show=True, save=False):
         plt.show()
     sns.reset_orig()
     plt.close(fig)
+
+def plot_spacings(s, folder='./', show=True, save=False):
+    x = np.linspace(0,5)
+    xs, ys = ecdf(s)
+    xs_avg = np.mean(xs, axis=0)
+    xs_err = np.std(xs, axis=0)
+
+    data_flat = {'s': s.flatten()}
+    data = {'x': x,
+            'poiss': spacing_poiss(x),
+            'goe': spacing_goe(x),
+            'gue': spacing_gue(x),
+            'cpoiss': spacing_cpoiss(x),
+            'cgoe': spacing_cgoe(x),
+            'cgue': spacing_cgue(x),
+            }
+                
+    sns.set_theme()
+    sns.set_style("white")
+    sns.set_style("ticks")
+    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
+    sns.set_context("paper")
+    fig, ax = plt.subplots(2,1)
+    fig.set_size_inches(3.386,2*2.54)
+    sns.despine()
     
-def plot_form_factor(time, c2, c4, c2_err=None, c4_err=None, folder='', show=True, save=False):
+    sns.histplot(data=data_flat, 
+                 x='s',
+                 stat='density',
+                 bins='auto',
+                 color='black',
+                 alpha=0.25,
+                 label='Kicked rotor',
+                 ax=ax[0])
+    #sns.kdeplot(data=data,
+    #            x='r',
+    #            label='Kicked rotor',
+    #            cut=0,
+    #            bw_adjust=2,
+    #            ax=ax[0])
+    sns.lineplot(data=data, x='x', y='poiss', label='Poisson', ax=ax[0])
+    sns.lineplot(data=data, x='x', y='goe', label='GOE', ax=ax[0])
+    sns.lineplot(data=data, x='x', y='gue', label='GUE', ax=ax[0])
+    #sns.lineplot(data=data, x='x', y='gse', label='GSE', ax=ax[0])
+    ax[0].set_xlabel(r'$s$')
+    ax[0].set_ylabel(r'$P(s)$')
+    ax[0].set_xlim(xmin=0, xmax=5)
+    ax[0].set_ylim(ymin=0, ymax=1)
+
+    ax[1].plot(xs_avg, ys, label='Kicked rotor', color='k')
+    ax[1].fill_betweenx(ys, xs_avg-xs_err, xs_avg+xs_err, color='k', alpha=0.25)
+    sns.lineplot(data=data, x='x', y='cpoiss', label='Poisson', ax=ax[1])
+    sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1])
+    sns.lineplot(data=data, x='x', y='cgue', label='GUE', ax=ax[1])
+    #sns.lineplot(data=data, x='x', y='cgse', label='GSE', ax=ax[1])
+    ax[1].set_xlabel(r'$s$')
+    ax[1].set_ylabel(r'$F(s)$')
+    ax[1].set_xlim(xmin=0, xmax=5)
+    ax[1].set_ylim(ymin=0, ymax=1)
+
+    if save:
+        fig.savefig(f'{folder}/spacing.pdf', bbox_inches="tight")
+    if show:
+        plt.show()
+    sns.reset_orig()
+    plt.close(fig)
+    
+def plot_spectral_functions(time, c2, c4, c2_err=None, c4_err=None, folder='./', show=True, save=False):
     data = {'time': time, 
             'c2': c2,
             'c4': c4}
@@ -206,13 +346,27 @@ def plot_form_factor(time, c2, c4, c2_err=None, c4_err=None, folder='', show=Tru
     ax[1].set_ylabel(r'$ \tilde{c}_4(t) $')
         
     if save:
-        fig.savefig(f'{folder}/form_factors.pdf', bbox_inches="tight")
+        fig.savefig(f'{folder}/spectral_functions.pdf', bbox_inches="tight")
     if show:
         plt.show()
     sns.reset_orig()
     plt.close(fig)
     
-def plot_frame_potential(time, F1, F2, folder='', show=True, save=False):
+def plot_frame_potential(time, F1, F2, window=0, folder='./', show=True, save=False):
+    
+    if window > 0:
+        # Time-bin average sliding window:
+        Nt = int(len(time) - window)
+        F1_avg = np.empty(Nt)
+        F2_avg = np.empty(Nt)
+        for t in range(Nt):
+            F1_avg[t] = np.mean(F1[t:t+window])
+            F2_avg[t] = np.mean(F2[t:t+window])
+
+        time = time[:Nt]
+        F1 = F1_avg
+        F2 = F2_avg
+
     data = {'time': time, 
             'F1': F1,
             'F2': F2,
@@ -254,7 +408,7 @@ def plot_frame_potential(time, F1, F2, folder='', show=True, save=False):
     sns.reset_orig()
     plt.close(fig)
     
-def plot_loschmidt_echo(time, le1, le2, le1_err=None, le2_err=None, folder='', show=True, save=False):
+def plot_loschmidt_echo(time, le1, le2, le1_err=None, le2_err=None, folder='./', show=True, save=False):
     # FIXME add non-isometric twirl operator version to compare
     data = {'time': time, 
             'le1': le1,
@@ -290,3 +444,72 @@ def plot_loschmidt_echo(time, le1, le2, le1_err=None, le2_err=None, folder='', s
 
 def integrated_dos(E, energies):
     return np.sum( np.heaviside(E - energies, 0.5) )
+
+def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=False, show=True, save=False):
+    energies_unfolded = np.empty(shape=energies.shape)
+    num_ensembles = energies.shape[0]
+        
+    idos = np.empty(shape=energies.shape)
+    for m in range(num_ensembles):
+        for n,E in enumerate(energies[m]):
+            idos[m][n] = integrated_dos(E, energies[m])
+                
+    if plot:
+        sns.set_theme()
+        sns.set_style("white")
+        sns.set_style("ticks")
+        sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
+        sns.set_context("paper")
+        fig, ax = plt.subplots(2,1)
+        fig.set_size_inches(3.386,6.25)
+        sns.despine()
+            
+    if polytype == 'chebyshev':
+        polyfit = np.polynomial.Chebyshev.fit
+    elif polytype == 'polynomial':
+        polyfit = np.polynomial.Polynomial.fit
+    elif polytype == 'hermite':
+        polyfit = np.polynomial.Hermite.fit
+    elif polytype == 'legendre':
+        polyfit = np.polynomial.Legendre.fit
+    elif polytype == 'aguerre':
+        polyfit = np.polynomial.Laguerre.fit
+    else:
+        raise ValueError('Unrecognized polyfit polynomial type !')
+
+    for m in range(num_ensembles):
+        p = polyfit(energies[m], idos[m], deg=deg)
+            
+        energies_unfolded[m] = np.sort(p(energies[m]))
+        x = np.linspace(energies_unfolded[m][0],
+                        energies_unfolded[m][-1],
+                        len(energies_unfolded[m]),
+                        endpoint=True)
+            
+        idos_unfolded = np.empty(len(x))
+        for n,E in enumerate(x):
+            idos_unfolded[n] = integrated_dos(E, energies_unfolded[m])
+                
+        if plot:
+            if m == 0:
+                ax[0].plot(energies[m],idos[m], color='black', alpha=0.25, label='Data')
+                ax[0].plot(energies[m], p(energies[m]), color='red', alpha=0.25, label='Fit')
+            else:
+                ax[0].plot(energies[m],idos[m], alpha=0.25, color='black')
+                ax[0].plot(energies[m], p(energies[m]), alpha=0.25, color='red')
+            ax[1].plot(x, idos_unfolded, alpha=0.25, color='black')
+        
+    if plot:
+        ax[0].set_xlabel(r'$E_n$')
+        ax[0].set_ylabel(r'$N(E_n)$')
+        ax[0].legend()
+        ax[1].set_xlabel(r'$x_n$')
+        ax[1].set_ylabel(r'$N(x_n)$')
+        if save:
+            fig.savefig(f'{folder}/unfolded_energies.pdf', bbox_inches="tight")
+        if show:
+            plt.show()
+        sns.reset_orig()
+        plt.close(fig)
+    
+    return energies_unfolded
