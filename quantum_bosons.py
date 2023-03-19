@@ -22,8 +22,10 @@ if __name__ == '__main__':
     parser.add_argument('-N', type=int, default=300)
     parser.add_argument('-num_ensembles', type=int, default=100)
     parser.add_argument('-J', type=float, default=8.9/(4.0*np.pi))
+    #parser.add_argument('-Omega', type=float, default=0.25*np.pi)
+    parser.add_argument('-Omega', type=float, default=0.25)
     parser.add_argument('-eta', type=float, default=0)
-    parser.add_argument('-Omega', type=float, default=0.25*np.pi)
+    #parser.add_argument('-eta', type=float, default=golden_ratio())
     parser.add_argument('-theta_noise', type=float, default=0.0)
     parser.add_argument('-phi_noise', type=float, default=0.05)
     parser.add_argument('-eta_noise', type=float, default=0)
@@ -71,6 +73,12 @@ if __name__ == '__main__':
         bosons.plot_spacings(save=save, show=show)
         end = time.time()
         print("Plotting took", end-start)
+
+        start = time.time()
+        bosons.set_unitary_time(num_ensembles=2)
+        bosons.plot_frame_potential2(save=save, show=show, window=2)
+        end = time.time()
+        print("Frame potential 2 took", end-start)
         
         return bosons
 

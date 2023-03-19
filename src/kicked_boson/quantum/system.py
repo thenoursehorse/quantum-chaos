@@ -57,7 +57,7 @@ class GenericSystem(object):
         e, v = np.linalg.eig(U.todense())
         ev = -1 * np.angle( e )
         ind = ev.argsort()
-        return ev[ind], v[:,ind]
+        return ev[ind], v[:,ind] 
 
     def truncate_eigenenergies(self):
         e_min = min(self._eigenenergies.flatten())
@@ -110,16 +110,13 @@ class GenericSystem(object):
         
         return r_avg, r_err
     
-    def spectral_functions(self, e, order, t=[1]):
-        return spectral_functions(e, self._d, order, t)
-    
-    def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, window=0, Nt_window=5, minimal=False):
+    def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, window=0, Nt_window=2, minimal=False):
         #Nt = int(np.ceil((Tf - Ti + 1) / dT))
         #self._time = np.linspace(Ti, Tf, Nt, endpoint=True)
         self._time = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
         self._c2 = np.empty([Nt, self._num_ensembles])
             
-        for batch_size in range(10,1,-1):
+        for batch_size in range(10,0,-1):
             if self._num_ensembles % batch_size == 0:
                 break
         N_batch = int(self._num_ensembles / batch_size)
@@ -132,11 +129,11 @@ class GenericSystem(object):
                 window_t = np.linspace(-window/2, window/2, Nt_window)
                 c2 = 0
                 for t in range(Nt_window):
-                    c2 += self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 2, t=self._time + t)
+                    c2 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 2, t=self._time + t)
                 self._c2[:, m*batch_size:(m+1)*batch_size] = c2 / Nt_window
             else:
                 self._c2[:, m*batch_size:(m+1)*batch_size] = \
-                self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 2, t=self._time)
+                    spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 2, t=self._time)
 
         self._c4 = (self._c2 * self._d**2)**2 / self._d**4
 
@@ -155,21 +152,44 @@ class GenericSystem(object):
                     c41 = 0
                     c42 = 0
                     for t in range(Nt_window):
-                        c41 += self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 41, t=self._time + t)
-                        c42 += self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 42, t=self._time + t)
+                        c41 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 41, t=self._time + t)
+                        c42 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time + t)
                     self._c41[:, m*batch_size:(m+1)*batch_size] = c41 / Nt_window
                     self._c42[:, m*batch_size:(m+1)*batch_size] = c42 / Nt_window
                 else:
                     self._c41[:, m*batch_size:(m+1)*batch_size] = \
-                        self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 41, t=self._time)
+                        spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 41, t=self._time)
                     self._c42[:, m*batch_size:(m+1)*batch_size] = \
-                        self.spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], 42, t=self._time)
+                        spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time)
             
             self._c41_avg = np.mean(self._c41, axis=-1)
             self._c41_err = np.std(self._c41, axis=-1)
             self._c42_avg = np.mean(self._c42, axis=-1)
             self._c42_err = np.std(self._c42, axis=-1)
 
+    def set_unitary_time(self, num_ensembles=2):
+        #tr(G+e^{-iHt}G G+e^(iHt)G)
+
+        if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+ 
+        self._time2 = np.logspace(np.log10(0.1), np.log10(10000), 100, endpoint=True)
+        #self._time2 = np.linspace(100, 200, 100, endpoint=True)
+
+        exp_e_diag = np.exp(-1j * self._time2[:, None, None] * self._eigenenergies[:num_ensembles])
+        exp_e = np.empty((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
+        for n in range(self._d):
+            exp_e[:,:,n,n] = exp_e_diag[:,:,n]
+        
+        vecs = self._eigenvectors[:num_ensembles]
+
+        self._Ut = np.empty((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
+        for t in range(len(self._time2)):
+            for m in range(num_ensembles):
+                self._Ut[t, m, ...] = vecs[m].conj().T @ \
+                                        exp_e[t, m, ...] @ \
+                                            vecs[m]
+        
     def frame_potential(self, k=1):
         if not hasattr(self, '_c4_avg'):
             self.set_spectral_functions()
@@ -183,6 +203,11 @@ class GenericSystem(object):
             return frame_potential(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
         else:
             return frame_potential(self._d, self._c2_avg, self._c4_avg)
+        
+    def frame_potential2(self):
+        if not hasattr(self, '_Ut'):
+            self.set_unitary_time()
+        return frame_potential2(self._Ut)
     
     def loschmidt_echo(self, kind='2nd'):
         if kind == '2nd':
@@ -239,6 +264,10 @@ class GenericSystem(object):
         F1 = self.frame_potential(k=1)
         F2 = self.frame_potential(k=2)
         plot_frame_potential(self._time, F1, F2, window=window, folder=self._folder, show=show, save=save)
+    
+    def plot_frame_potential2(self, window=50, show=True, save=False):
+        F1, F2 = self.frame_potential2()
+        plot_frame_potential(self._time2, F1, F2, window=window, folder=self._folder, show=show, save=save)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare
@@ -342,9 +371,6 @@ class BosonChain(GenericSystem):
         H1 = scipy.sparse.csc_array( np.diag(DiagBand) )
         
         #OffDiagBand = (np.asarray(theta_list) * np.exp(1j*np.asarray(eta_list)))[:self._N-1]
-        
-        #theta_list = theta_list + 1j*eta_list
-        #OffDiagBand = theta_list[:self._N-1]
         
         OffDiagBand = theta_list[:self._N-1]
         OffOffDiagBand = 1j*eta_list[:self._N-2]

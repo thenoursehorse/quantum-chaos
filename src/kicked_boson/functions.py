@@ -81,6 +81,7 @@ def spectral_functions(e, d, order, t):
     '''
     t is a numpy array of time values
     '''
+
     if order == 2:
         #c = np.sum( np.exp(1j*(e[...,None] - e)*t) ).real / self._d**2
             
@@ -513,3 +514,37 @@ def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=Fa
         plt.close(fig)
     
     return energies_unfolded
+
+def frame_potential2(Ut):
+    #tr(G+e^{-iHt}G G+e^(iHt)G)
+
+    # Taken from the last appendix in 10.1007/JHEP11(2017)048
+    # ignore coincident as they scale as 1/num_ensembles
+    # and you only need 2 ensembles and time-average to get
+    # a good representation of the large ensemble average
+    
+    Nt = Ut.shape[0]
+    num_ensembles = Ut.shape[1]
+
+    F = np.zeros((Nt,num_ensembles,num_ensembles))
+    
+    # This is not really faster, and scales worse for larger # of ensembles
+    #for i in range(num_ensembles):
+    #    for j in range(num_ensembles):
+    #        if i != j: # Ignore coincident
+    #            tmp = np.trace(Ut[:,i,...] @ np.transpose( Ut[:,j,...].conj(), (0,2,1)), axis1=1, axis2=2)
+    #            tmp *= tmp.conj()
+    #            F[:,i,j] = tmp.real
+    
+    for t in range(Nt):
+        for i in range(num_ensembles):
+            for j in range(num_ensembles):
+                if i != j: # Ignore coincident
+                    tmp = np.trace( Ut[t,i,...] @ Ut[t,j,...].conj().T )
+                    tmp *= tmp.conj()
+                    F[t,i,j] = tmp.real
+
+    F1 = np.sum(F, axis=(1,2)) / num_ensembles**2
+    F2 = np.sum(F**3, axis=(1,2)) / num_ensembles**2
+
+    return F1, F2
