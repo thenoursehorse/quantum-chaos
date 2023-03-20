@@ -1,8 +1,9 @@
-
 import numpy as np
 import scipy
 #import qutip as qt
 from copy import deepcopy
+
+import time
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -167,30 +168,83 @@ class GenericSystem(object):
             self._c42_avg = np.mean(self._c42, axis=-1)
             self._c42_err = np.std(self._c42, axis=-1)
 
-    def set_unitary_time(self, num_ensembles=2):
+    def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, dT=0.1, num_ensembles=2):
         #tr(G+e^{-iHt}G G+e^(iHt)G)
 
         if num_ensembles is None:
             num_ensembles = self._num_ensembles
  
-        self._time2 = np.logspace(np.log10(0.1), np.log10(10000), 100, endpoint=True)
-        #self._time2 = np.linspace(100, 200, 100, endpoint=True)
+        self._time2 = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
+        #self._time2 = np.array([1, 10, 100, 1000, 10000])
+        #self._time2 = np.linspace(0, 100, 100, endpoint=True)
 
         exp_e_diag = np.exp(-1j * self._time2[:, None, None] * self._eigenenergies[:num_ensembles])
-        exp_e = np.empty((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
+        exp_e = np.zeros((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
         for n in range(self._d):
             exp_e[:,:,n,n] = exp_e_diag[:,:,n]
         
         vecs = self._eigenvectors[:num_ensembles]
-
+        
         self._Ut = np.empty((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
         for t in range(len(self._time2)):
             for m in range(num_ensembles):
-                self._Ut[t, m, ...] = vecs[m].conj().T @ \
+                self._Ut[t,m, ...] = vecs[m] @ \
                                         exp_e[t, m, ...] @ \
-                                            vecs[m]
+                                            vecs[m].conj().T
+
+        #self._Ut = np.empty((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
+        #for i,t in enumerate(self._time2):
+        #    for m in range(num_ensembles):
+        #        self._Ut[i,m,...] = np.linalg.matrix_power(self._U[m].todense(), int(t))
+
+        # This is not faster
+        #self._Ut = np.einsum('mij,tmjk,mjl->tmil', vecs, \
+        #                                           exp_e, \
+        #                                           np.transpose(vecs.conj(), (0,2,1)), \
+        #                                           optimize=True)
+    
+    def set_unitary_fidelity(self):
+        if not hasattr(self, '_Ut'):
+            self.set_unitary_evolve()
+
+        num_ensembles = self._Ut.shape[1]
+
+        # Taken from the last appendix in 10.1007/JHEP11(2017)048
+        # ignore coincident as they scale as 1/num_ensembles for the frame potential
+        # and you only need 2 ensembles and time-average to get
+        # a good representation of the large ensemble average
+        self._unitary_fidelity = np.zeros((len(self._time2), num_ensembles, num_ensembles))
+        for t in range(len(self._time2)):
+            for i in range(num_ensembles):
+                for j in range(num_ensembles):
+                    if i != j: # Ignore coincident
+                        self._unitary_fidelity[t,i,j] = np.abs(np.trace( self._Ut[t,i,...] @ self._Ut[t,j,...].conj().T ))**2
+ 
+        # This is not really faster than above, and scales worse for larger # of ensembles
+        #for i in range(num_ensembles):
+        #    for j in range(num_ensembles):
+        #        if i != j: # Ignore coincident
+        #            tmp = np.trace(Ut[:,i,...] @ np.transpose( Ut[:,j,...].conj(), (0,2,1)), axis1=1, axis2=2)
+        #            tmp *= tmp.conj()
+        #            self._unitary_fidelity[:,i,j] = tmp.real
+        
+        # How to ignore coincident here?
+        #self._unitary_fidelity = np.einsum('tmij,tnji->tmn', self._Ut, np.transpose(self._Ut.conj(), (0,1,3,2)), optimize=True)
+        
+        # Lower bound estimate for frame potential
+        # If use Nt=same as isospectral estimate, the frame potential will follow
+        # the same curve, but the minimum will go WAY below the Haar average!
+        #self._unitary_fidelity = np.zeros((len(self._time2), num_ensembles))
+        #for t in range(len(self._time2)):
+        #    for i in range(num_ensembles):
+        #            self._unitary_fidelity[t,i] = np.abs(np.trace( self._Ut[t,i] ))**4 / self._d**2
         
     def frame_potential(self, k=1):
+        # NOTE read last paragraph in Sec. 4.3 on pg. 26. It basically says
+        # that the frame potential as calculated from the spectral
+        # form factors is valid for any ensemble whose measure is
+        # unitarily invariant
+
         if not hasattr(self, '_c4_avg'):
             self.set_spectral_functions()
         if not hasattr(self, '_c2_avg'):
@@ -205,9 +259,9 @@ class GenericSystem(object):
             return frame_potential(self._d, self._c2_avg, self._c4_avg)
         
     def frame_potential2(self):
-        if not hasattr(self, '_Ut'):
-            self.set_unitary_time()
-        return frame_potential2(self._Ut)
+        if not hasattr(self, '_unitary_fidelity'):
+            self.set_unitary_fidelity()
+        return frame_potential2(self._unitary_fidelity)
     
     def loschmidt_echo(self, kind='2nd'):
         if kind == '2nd':
@@ -222,6 +276,17 @@ class GenericSystem(object):
             raise ValueError('Unrecognized kind !')
     
     def otoc(self, kind='4-point'):
+        # NOTE read Eq. 3.9 in 10.1007/JHEP11(2017)048
+        # about how this Harr average is similar to just
+        # measuring a few A operators (Pauli's)
+
+        # NOTE read below Eq. 3.16, which implies that the
+        # Pauli average above is only valid at long
+        # time scales and misses the short time local fluctuations
+        # that eventually get washed out
+
+        # FIXME calculate this for like <n> or something
+        # and see if it matches this Pauli estimate below
         if kind == '4-point':
             if not hasattr(self, '_c4_avg'):
                 self.set_spectral_functions()
@@ -263,11 +328,10 @@ class GenericSystem(object):
     def plot_frame_potential(self, window=0, show=True, save=False):
         F1 = self.frame_potential(k=1)
         F2 = self.frame_potential(k=2)
-        plot_frame_potential(self._time, F1, F2, window=window, folder=self._folder, show=show, save=save)
-    
-    def plot_frame_potential2(self, window=50, show=True, save=False):
-        F1, F2 = self.frame_potential2()
-        plot_frame_potential(self._time2, F1, F2, window=window, folder=self._folder, show=show, save=save)
+        F1_est, F2_est = self.frame_potential2()
+        plot_frame_potential([self._time, F1, F2], \
+                             [self._time2, F1_est, F2_est], \
+                             window=window, folder=self._folder, show=show, save=save)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare

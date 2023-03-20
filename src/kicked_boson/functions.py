@@ -88,8 +88,8 @@ def spectral_functions(e, d, order, t):
         #c = np.sum( np.exp(1j*e*t) )
         c = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
         c *= c.conj()
-        c /= d**2
         c = c.real
+        c /= d**2
         
     elif order == 3:
         #val = 2*e[...,None] - e
@@ -353,24 +353,34 @@ def plot_spectral_functions(time, c2, c4, c2_err=None, c4_err=None, folder='./',
     sns.reset_orig()
     plt.close(fig)
     
-def plot_frame_potential(time, F1, F2, window=0, folder='./', show=True, save=False):
+def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=True, save=False):
     
-    if window > 0:
+    time, F1, F2 = F_analytic
+    if F_est is not None:
+        time_est, F1_est, F2_est = F_est
+
+    if window > 0 and F_est is not None:
         # Time-bin average sliding window:
-        Nt = int(len(time) - window)
+        Nt = int(len(time_est) - window)
         F1_avg = np.empty(Nt)
         F2_avg = np.empty(Nt)
         for t in range(Nt):
-            F1_avg[t] = np.mean(F1[t:t+window])
-            F2_avg[t] = np.mean(F2[t:t+window])
+            F1_avg[t] = np.mean(F1_est[t:t+window])
+            F2_avg[t] = np.mean(F2_est[t:t+window])
 
-        time = time[:Nt]
-        F1 = F1_avg
-        F2 = F2_avg
+        time_est = time_est[:Nt]
+        F1_est = F1_avg
+        F2_est = F2_avg
+
+    data2 = {'time': time_est,
+             'F1': F1_est,
+             'F2': F2_est}
 
     data = {'time': time, 
             'F1': F1,
             'F2': F2,
+            #'upperbound1': d**2*np.ones(len(time)), # d^(2k)
+            #'upperbound2': d**4*np.ones(len(time)),
             'harr1': np.ones(len(time)),
             'harr2': 2*np.ones(len(time)),
             'asymptote1': 3*np.ones(len(time)),
@@ -386,17 +396,21 @@ def plot_frame_potential(time, F1, F2, window=0, folder='./', show=True, save=Fa
     fig.set_size_inches(3.386,6.25)
     sns.despine()
     
-    sns.lineplot(data=data, x='time', y='F1', ax=ax[0])
+    #sns.lineplot(data=data, x='time', y='upperbound1', ax=ax[0])
     sns.lineplot(data=data, x='time', y='harr1', ax=ax[0])
     sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0])
+    sns.lineplot(data=data, x='time', y='F1', ax=ax[0])
+    sns.lineplot(data=data2, x='time', y='F1', ax=ax[0])
     ax[0].set_xscale('log')
     ax[0].set_yscale('log')
     ax[0].set_xlabel(r'$t$')
     ax[0].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(1)} (t) $')
     
-    sns.lineplot(data=data, x='time', y='F2', ax=ax[1])
+    #sns.lineplot(data=data, x='time', y='upperbound2', ax=ax[1])
     sns.lineplot(data=data, x='time', y='harr2', ax=ax[1])
     sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1])
+    sns.lineplot(data=data, x='time', y='F2', ax=ax[1])
+    sns.lineplot(data=data2, x='time', y='F2', ax=ax[1])
     ax[1].set_xscale('log')
     ax[1].set_yscale('log')
     ax[1].set_xlabel(r'$t$')
@@ -515,36 +529,14 @@ def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=Fa
     
     return energies_unfolded
 
-def frame_potential2(Ut):
-    #tr(G+e^{-iHt}G G+e^(iHt)G)
+def frame_potential2(unitary_fidelity, num_ensembles=None):
+    if num_ensembles is None:
+        num_ensembles = unitary_fidelity.shape[-1]
 
-    # Taken from the last appendix in 10.1007/JHEP11(2017)048
-    # ignore coincident as they scale as 1/num_ensembles
-    # and you only need 2 ensembles and time-average to get
-    # a good representation of the large ensemble average
-    
-    Nt = Ut.shape[0]
-    num_ensembles = Ut.shape[1]
+    F1 = np.sum(unitary_fidelity, axis=(1,2)) / num_ensembles**2
+    F2 = np.sum(unitary_fidelity**2, axis=(1,2)) / num_ensembles**2
 
-    F = np.zeros((Nt,num_ensembles,num_ensembles))
-    
-    # This is not really faster, and scales worse for larger # of ensembles
-    #for i in range(num_ensembles):
-    #    for j in range(num_ensembles):
-    #        if i != j: # Ignore coincident
-    #            tmp = np.trace(Ut[:,i,...] @ np.transpose( Ut[:,j,...].conj(), (0,2,1)), axis1=1, axis2=2)
-    #            tmp *= tmp.conj()
-    #            F[:,i,j] = tmp.real
-    
-    for t in range(Nt):
-        for i in range(num_ensembles):
-            for j in range(num_ensembles):
-                if i != j: # Ignore coincident
-                    tmp = np.trace( Ut[t,i,...] @ Ut[t,j,...].conj().T )
-                    tmp *= tmp.conj()
-                    F[t,i,j] = tmp.real
-
-    F1 = np.sum(F, axis=(1,2)) / num_ensembles**2
-    F2 = np.sum(F**3, axis=(1,2)) / num_ensembles**2
-
+    # For the lower bound estimate
+    #F1 = np.mean(unitary_fidelity, axis=1)
+    #F2 = np.mean(unitary_fidelity**2, axis=1)
     return F1, F2

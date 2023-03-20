@@ -50,7 +50,8 @@ def delta_wj_fast(x, Omega=2, scale_N=False):
         return (4.0 * Omega / N**2) * x
     else:
         # NOTE omega = 0.01 / 4 = GSE statistics
-        return 4.0 * Omega * x
+        #return 4.0 * Omega * x
+        return Omega * x
 
 def get_sigma_ops(N, axis):
     import qutip as qt

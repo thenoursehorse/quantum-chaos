@@ -62,6 +62,16 @@ if __name__ == '__main__':
         bosons.set_spectral_functions(window=0)
         end = time.time()
         print("Spectral function construction took", end-start)
+        
+        start = time.time()
+        bosons.set_unitary_evolve(num_ensembles=None)
+        end = time.time()
+        print("Time evolve unitaries took", end-start)
+        
+        start = time.time()
+        bosons.set_unitary_fidelity()
+        end = time.time()
+        print("Unitaries fidelity took", end-start)
 
         start = time.time()
         bosons.plot_eigenenergies(save=save, show=show)
@@ -73,12 +83,6 @@ if __name__ == '__main__':
         bosons.plot_spacings(save=save, show=show)
         end = time.time()
         print("Plotting took", end-start)
-
-        start = time.time()
-        bosons.set_unitary_time(num_ensembles=2)
-        bosons.plot_frame_potential2(save=save, show=show, window=2)
-        end = time.time()
-        print("Frame potential 2 took", end-start)
         
         return bosons
 
