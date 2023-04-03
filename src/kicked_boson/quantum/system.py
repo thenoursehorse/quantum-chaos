@@ -1,15 +1,26 @@
 import numpy as np
 import scipy
-#import qutip as qt
 from copy import deepcopy
-
-import time
-
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 from kicked_boson.quantum.operators import *
 from kicked_boson.functions import *
+
+class GenericSystemData(object):
+    def __init__(self, filename, **kwargs):
+        self.filename = filename
+        for key in kwargs.keys():
+            self.__dict__[key] = kwargs[key]
+    
+    def save(self):
+        with h5py.File(self.filename, 'w') as f:
+            for key in self.__dict__.keys():
+                if key != 'filename':
+                    f.create_dataset(key, data=self.__dict__[key])
+
+    def load(self):
+        with h5py.File(self.filename, 'r') as f:
+            for key in f.keys():
+                self.__dict__[key] = np.array(f[key])
 
 class GenericSystem(object):
     def __init__(self, num_ensembles=1, folder='figs/', T=1):
@@ -18,50 +29,8 @@ class GenericSystem(object):
         self.T = T
         self._T0 = deepcopy(self.T)
 
-        self.run()
-
-    def run(self):
-        #self.make_operators()
-        self._U = [self.make_unitary() for _ in range(self._num_ensembles)]
-        self._d = self._U[0].shape[0]
-        #self._U0 = deepcopy(self._U) #FIXME
-        # FIXME very expensive to calculate because of the logm
-        #self._H_eff_list = [self.make_H_eff(self._U[m]) for m in range(self._num_ensembles)]
-        self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
-        self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
-        for m in range(self._num_ensembles):
-            self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
-
-    #def reset(self):
-    #    self._U = deepcopy(self._U0)
-    #    self._T = deepcopy(self._T0)
-    #    self.run()
-
-    def make_H_eff(self, U):
-        #self._H_eff = 1j * U.logm() / self.T
-        self._H_eff = 1j * scipy.linalg.logm(U.todense()) / self.T
-        return self._H_eff
-
-    def make_eigenenergies(self, U):
-        #eigenenergies = H_eff.eigenenergies()
-        #return eigenenergies
-        
-        #return U.eigenenergies()
-        
-        #e, v = np.linalg.eigh(H_eff)
-        #eigenenergies = e
-        #return eigenenergies
-        
-        #ev = np.linalg.eigvals(U.todense())
-        #return np.sort(-1 * np.angle( ev ))
-        
-        e, v = np.linalg.eig(U.todense())
-        ev = -1 * np.angle( e )
-        ind = ev.argsort()
-        return ev[ind], v[:,ind] 
-
     def truncate_eigenenergies(self):
-        e_min = min(self._eigenenergies.flatten())
+        #e_min = min(self._eigenenergies.flatten())
         # FIXME remove/mask all energies that are less than 10*emin
         return None
         
@@ -108,8 +77,71 @@ class GenericSystem(object):
         # <r> = 4 - 2 sqrt(3) = 0.53590 GOE 
         # <r> = 2 sqrt(3) / pi - 1/2 = 0.60266 GUE
         # <r> = 32/15 sqrt(3)/pi - 1/2 = 0.67617 GSE
-        
         return r_avg, r_err
+    
+    def eta_ratios(self):
+        r = self.level_ratios()
+
+        r_poiss_avg = 2 * np.log(2) - 1
+        r_goe_avg = 4 - 2 * np.sqrt(3)
+        r_gue_avg = 2 * np.sqrt(3) / np.pi - 1.0/2.0
+        r_gse_avg = 32.0/15.0 * np.sqrt(3)/np.pi - 1.0/2.0
+
+        return (np.mean(np.minimum(r, 1/r)) - r_poiss_avg) / (r_goe_avg - r_poiss_avg)
+
+    def fractal_dimension(self, q, dagger=False):
+        # FIXME take dagger so shannon entropy summed over eigenstates? How do I label them then?
+        if dagger:
+            return fractal_dimension(q, np.transpose(self._eigenvectors.conj(), (0,2,1)), sum_axis=1)
+        else:
+            return fractal_dimension(q, self._eigenvectors, sum_axis=1)
+        # FIXME calcualte the fractal dimension for an initial state
+        # at the centre of the chain. What happens to it over time?
+    
+    def set_fractal_dimension(self, num_ensembles=10, q_keep=2):
+        if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+        if num_ensembles > self._num_ensembles:
+            num_ensembles = self._num_ensembles
+
+        self._q_arr = np.arange(1,30+0.1)
+        self._q_arr = np.insert(self._q_arr, 0, 0.5)
+        
+        self._dq_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_err = np.empty(shape=self._q_arr.shape)
+        self._dq_goe_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_goe_err = np.empty(shape=self._q_arr.shape)
+        self._dq_gue_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_gue_err = np.empty(shape=self._q_arr.shape)
+    
+        # For comparison to goe and gue
+        # FIXME add gsu
+        matrix_goe = np.empty([num_ensembles, self._d, self._d])
+        matrix_gue = np.empty([num_ensembles, self._d, self._d], dtype=np.complex_)
+        for m in range(num_ensembles):
+            matrix_goe[m,...] = scipy.stats.ortho_group.rvs(self._d)
+            matrix_gue[m,...] = scipy.stats.unitary_group.rvs(self._d)
+        self._eigenenergies_goe, self._eigenvectors_goe = np.linalg.eigh(matrix_goe)
+        self._eigenenergies_gue, self._eigenvectors_gue = np.linalg.eigh(matrix_gue)
+    
+        for i,q in enumerate(self._q_arr):
+            dq = self.fractal_dimension(q)
+            self._dq_avg[i] = np.mean(dq)
+            self._dq_err[i] = np.std(dq)
+    
+            dq_goe = fractal_dimension(q, self._eigenvectors_goe, sum_axis=1)
+            self._dq_goe_avg[i] = np.mean(dq_goe)
+            self._dq_goe_err[i] = np.std(dq_goe)
+            
+            dq_gue = fractal_dimension(q, self._eigenvectors_gue, sum_axis=1)
+            self._dq_gue_avg[i] = np.mean(dq_gue)
+            self._dq_gue_err[i] = np.std(dq_gue)
+
+            if q == q_keep:
+                self._dq = dq
+                self._dq_goe = dq_goe
+                self._dq_gue = dq_gue
+                self._q = q
     
     def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, window=0, Nt_window=2, minimal=False):
         #Nt = int(np.ceil((Tf - Ti + 1) / dT))
@@ -169,9 +201,9 @@ class GenericSystem(object):
             self._c42_err = np.std(self._c42, axis=-1)
 
     def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, dT=0.1, num_ensembles=2):
-        #tr(G+e^{-iHt}G G+e^(iHt)G)
-
         if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+        if num_ensembles > self._num_ensembles:
             num_ensembles = self._num_ensembles
  
         self._time2 = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
@@ -240,8 +272,8 @@ class GenericSystem(object):
         #            self._unitary_fidelity[t,i] = np.abs(np.trace( self._Ut[t,i] ))**4 / self._d**2
         
     def frame_potential(self, k=1):
-        # NOTE read last paragraph in Sec. 4.3 on pg. 26. It basically says
-        # that the frame potential as calculated from the spectral
+        # NOTE read last paragraph in Sec. 4.3 on pg. 26 of 10.1007/JHEP11(2017)048. 
+        # It basically says that the frame potential as calculated from the spectral
         # form factors is valid for any ensemble whose measure is
         # unitarily invariant
 
@@ -298,15 +330,15 @@ class GenericSystem(object):
         else:
             raise ValueError('Unreqognized kind !')
     
-    def evolve(self, T):
-        dT = T-self.T
-        self.T = T
-        self._U = self._U**(dT+1)
-        self._H_eff = self.make_H_eff(self._U)
-        self._eigenenergies = self.make_eigenvalues(self._H_eff_list)
+    #def evolve(self, T):
+    #    dT = T-self.T
+    #    self.T = T
+    #    self._U = self._U**(dT+1)
+    #    self._H_eff = self.make_H_eff(self._U)
+    #    self._eigenenergies = self.make_eigenvalues(self._H_eff_list)
 
     def plot_eigenenergies(self, show=True, save=False):
-        plot_eigenenergies(energies=self._eigenenergies, folder=self._folder, show=show, save=save)
+        plot_eigenenergies(energies=self._eigenenergies, N=self._N, folder=self._folder, show=show, save=save)
     
     def plot_spacings(self, show=True, save=False):
         if not hasattr(self, "_energies_unfolded"):
@@ -314,30 +346,81 @@ class GenericSystem(object):
         s = self.level_spacings(self._energies_unfolded)
         plot_spacings(s, folder=self._folder, show=show, save=save)
 
+    # FIXME plot Sigma^2, the variance in the number of eigenvalues, which shows the
+    # long-range fluctuations. See Eq. 4 of doi:10.3390/e18100359 
+    # FIXME from above paper plot survival probability (Eq. 13)
     def plot_ratios(self, show=True, save=False):
+        # NOTE ratios and level spacings are short-range fluctuations
         r = self.level_ratios()
         plot_ratios(r, folder=self._folder, show=show, save=save)
+    
+    def plot_vector_coefficients(self, show=True, save=False):
+        c = np.abs(self._eigenvectors[0])
+        plot_vector_coefficients(c, self._d, folder=self._folder, show=show, save=save)
+    
+    def plot_fractal_dimension(self, show=True, save=False, dagger=False):
+        if not hasattr(self, "_dq"):
+            self.set_fractal_dimension()
+        if dagger:
+            x = np.empty(shape=self._eigenenergies.shape)
+            for m in range(x.shape[0]):
+                x[m] = np.arange(1, self._d+0.1)
+            x_goe = np.empty(shape=self._eigenenergies_goe.shape)
+            for m in range(x_goe.shape[0]):
+                x_goe[m] = np.arange(1, self._d+0.1)
+            x_gue = np.empty(shape=self._eigenenergies_gue.shape)
+            for m in range(x_gue.shape[0]):
+                x_gue[m] = np.arange(1, self._d+0.1)
+            plot_fractal_dimension([x, x_goe, x_gue],
+                                   [self._dq, self._dq_goe, self._dq_gue],
+                                   [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
+                                   [self._dq_err, self._dq_goe_err, self._dq_gue_err],
+                                   self._q_arr,
+                                   folder=self._folder, 
+                                   show=show, 
+                                   save=save)        
+        else:
+            plot_fractal_dimension([self._eigenenergies/self._N, self._eigenenergies_goe/self._N, self._eigenenergies_gue/self._N],
+                                   [self._dq, self._dq_goe, self._dq_gue],
+                                   [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
+                                   [self._dq_err, self._dq_goe_err, self._dq_gue_err],
+                                   self._q_arr, 
+                                   folder=self._folder, 
+                                   show=show, 
+                                   save=save)        
     
     def plot_spectral_functions(self, show=True, save=False):
         if not hasattr(self, '_c2_avg'):
             self.set_spectral_functions()
         if not hasattr(self, '_c4_avg'):
             self.set_spectral_functions()
-        plot_spectral_functions(self._time, self._c2_avg, self._c4_avg, folder=self._folder, show=show, save=save)
+        plot_spectral_functions(time=self._time, 
+                                c2=self._c2_avg, 
+                                c4=self._c4_avg,
+                                d=self._d,
+                                #c2_err=self._c2_err, 
+                                #c4_err=self._c4_err,
+                                folder=self._folder, 
+                                show=show, 
+                                save=save)
 
-    def plot_frame_potential(self, window=0, show=True, save=False):
+    def plot_frame_potential(self, window=0, estimate=True, show=True, save=False):
         F1 = self.frame_potential(k=1)
         F2 = self.frame_potential(k=2)
-        F1_est, F2_est = self.frame_potential2()
-        plot_frame_potential([self._time, F1, F2], \
-                             [self._time2, F1_est, F2_est], \
-                             window=window, folder=self._folder, show=show, save=save)
+        if estimate:
+            F1_est, F2_est = self.frame_potential2()
+            plot_frame_potential([self._time, F1, F2], \
+                                 [self._time2, F1_est, F2_est], \
+                                 window=window, folder=self._folder, show=show, save=save)
+        else:
+            plot_frame_potential([self._time, F1, F2], \
+                                 folder=self._folder, show=show, save=save)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare
         le1 = self.loschmidt_echo(kind='1st')
         le2 = self.loschmidt_echo(kind='2nd')
-        plot_loschmidt_echo(self._time, le1, le2, folder=self._folder, show=show, save=save)
+        plot_loschmidt_echo(self._time, le1, le2, self._d, folder=self._folder, show=show, save=save)
     
     def chi_distance(self, kind='ratios'):
         if kind == 'ratios':
@@ -362,86 +445,3 @@ class GenericSystem(object):
     @property
     def d(self):
         return self._d
-
-class BosonChain(GenericSystem):
-    def __init__(self, N,
-                       J=1,
-                       Omega=1,
-                       eta=0,
-                       theta_noise=0,
-                       phi_noise=0.05,
-                       eta_noise=0,
-                       excitations=1,
-                       num_modes=2,
-                       periodic=False,
-                       **kwargs):
-    
-        
-        self._N = N
-        self._J = J
-        self._Omega = Omega
-        self._eta = eta
-        self._theta_noise = theta_noise
-        self._phi_noise = phi_noise
-        self._eta_noise = eta_noise
-        self._excitations = excitations
-        self._num_modes = num_modes
-        self._periodic = periodic
-
-        self._dims = [num_modes for _ in range(self._N)]
-
-        self._remove_vac = True
-        
-        super().__init__(**kwargs)
-    
-    def make_operators(self):
-        '''
-        Make bosonic annihilation operator and the number operator on each site
-        restricted to the maximum number of excitations
-        '''
-        self._destroy_Op = get_destroy_operators(self._dims, self._excitations)
-        self._num_Op = [self._destroy_Op[j].dag() * self._destroy_Op[j] for j in range(self._N)]
-    
-    def make_unitary(self):
-        T = 1
-        rng = np.random.default_rng()
-        
-        # Phases specifying hopping
-        #theta_list = [self._J*T*np.pi for _ in range(self._N)]
-        theta_list = self._J*T * np.ones(self._N)
-        theta_list += self._theta_noise * rng.uniform(-np.pi, np.pi, self._N)
-
-        # Phases specifying trapping potential with noise
-        #phi_list = np.asarray([delta_wj(self._N, j+1, self._Omega) * T for j in range(self._N)])
-        phi_list = delta_wj_fast(np.arange(1, self._N+1), self._Omega)
-        phi_list += self._phi_noise * rng.uniform(-np.pi, np.pi, self._N)
-
-        # Time reversal symmetry breaking on hopping
-        eta_list = [self._eta for _ in range(self._N)]
-        eta_list += self._eta_noise * rng.uniform(-np.pi, np.pi, self._N)
-
-        # Floquet operator at period T
-        #U_h = hopping_unitary(N=self._N, theta_list=theta_list, eta_list=eta_list, b_list=self._destroy_Op, periodic=self._periodic)
-        #U_p = phase_shift_unitary(N=self._N, phi_list=phi_list, b_list=self._destroy_Op)
-        #U = U_h*U_p
-        # NOTE for a single-particle restriction, qutip puts index 0 as the vacuum. 
-        # Then the next element is site N ... the last element N+1 is site 0
-
-        # Single particle sector only
-        #if self._remove_vac:
-        #    U = qt.Qobj(U[1:,1:], dims=U.dims)
-
-        DiagBand = phi_list
-        H1 = scipy.sparse.csc_array( np.diag(DiagBand) )
-        
-        #OffDiagBand = (np.asarray(theta_list) * np.exp(1j*np.asarray(eta_list)))[:self._N-1]
-        
-        OffDiagBand = theta_list[:self._N-1]
-        OffOffDiagBand = 1j*eta_list[:self._N-2]
-
-        H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
-        H2 += scipy.sparse.coo_array( np.diag(OffOffDiagBand, 2) + np.diag(OffOffDiagBand.conj(), -2) )
-        H2 = H2.tocsc()
-        U = scipy.sparse.linalg.expm(-1j*H2) @ scipy.sparse.linalg.expm(-1j*H1)
-
-        return U 
