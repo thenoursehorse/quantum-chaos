@@ -179,6 +179,15 @@ def fractal_dimension(q, vecs, sum_axis=1):
     else:
         return -1/(q-1) * (1/np.log(d)) * np.log( np.sum(sum_coeff, axis=sum_axis) )
     
+def survival_probability_amplitude(psi, time, eigs, vecs, init=False):
+    exp_e = np.exp(-1j * time[:, None, None] * eigs)
+    if init:
+        psi_n = np.abs(vecs @ psi)**2
+        return np.sum(psi_n * exp_e, axis=-1)
+    else:
+        right = (vecs @ psi) * exp_e
+        return np.einsum('mka,tma->tmk', np.transpose(vecs.conj(), (0,2,1)), right)
+    
 def spectral_functions(e, d, order, t):
     '''
     t is a numpy array of time values
@@ -273,7 +282,7 @@ def loschmidt_echo(d, c2=None, c4=None, kind='2nd'):
     else:
         raise ValueError('Unrecognized kind !')
 
-def otoc(d, c2=None, c4=None, kind='4-point'):
+def otoc(d, c2=None, c4=None, A=None, B=None, kind='4-point'):
     # FIXME calculate explicitly for some operators
     if kind == '4-point':
         # NOTE only valid for A and B non-overlapping Pauli operators on qubits
@@ -282,6 +291,8 @@ def otoc(d, c2=None, c4=None, kind='4-point'):
         # NOTE only valid for A being a pure state |Psi>
         # FIXME figure out properly
         return (c2 + 1) / (d + 1)
+    elif kind == 'operators':
+        return None
     else:
         raise ValueError('Unrecognized kind !')
     
@@ -302,7 +313,7 @@ def plot_eigenenergies(energies, N, folder='./', show=True, save=False):
     ax.set_xlabel(r'$n$')
     ax.set_ylabel(r'$E_n$')
     if save:
-        fig.savefig(f'{self._folder}/eigenenergies.pdf', bbox_inches="tight")
+        fig.savefig(f'{folder}/eigenenergies.pdf', bbox_inches="tight")
     if show:
         plt.show()
     sns.reset_orig()
@@ -582,6 +593,83 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembl
 
     if save:
         fig.savefig(f'{folder}/fractal_dimension_q{q}.pdf', bbox_inches="tight")
+    if show:
+        plt.show()
+    sns.reset_orig()
+    plt.close(fig)
+
+def plot_fractal_dimension_state(time, dq_state_avg, dq_state_err, q_arr, q=2, folder='./', show=True, save=False):
+    sns.set_theme()
+    sns.set_style("white")
+    sns.set_style("ticks")
+    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
+    sns.set_context("paper")
+    fig, ax = plt.subplots(2,1)
+    fig.set_size_inches(3.386,6.25)
+    sns.despine()
+
+    q_idx = np.where(np.abs(q_arr - q) < 1e-10)[0][0]
+    ax[0].plot(time, dq_state_avg[:,q_idx], color=colors['model'], label='Model')
+    ax[0].fill_between(time, 
+                       dq_state_avg[:,q_idx]-dq_state_err[:,q_idx], 
+                       dq_state_avg[:,q_idx]+dq_state_err[:,q_idx], 
+                       alpha=0.1, 
+                       color=colors['model'])
+
+    #ax[0].legend()
+    ax[0].set_xscale('log')
+    ax[0].set_xlabel(r'$t$')
+    ax[0].set_ylabel(f'$D_{q}(\psi)$')
+    ax[0].set_xlim(xmin=time[0], xmax=time[-1])
+    ax[0].set_ylim(ymin=0, ymax=1)
+
+    c = ax[1].pcolormesh(time, q_arr, dq_state_avg.T, vmin=0, vmax=1, shading='auto')
+    ax[1].set_xscale('log')
+    ax[1].set_xlabel(r'$t$')
+    ax[1].set_ylabel(f'$q$')
+    #fig.colorbar(c, orientation='horizontal', ax=ax[1])
+    
+    if save:
+        fig.savefig(f'{folder}/fractal_dimension_state_q{q}.pdf', bbox_inches="tight")
+    if show:
+        plt.show()
+    sns.reset_orig()
+    plt.close(fig)
+
+def plot_survival_probability(time, 
+    w_init_avg, w_ti_avg, w_init_err=None, w_ti_err=None, vmax=0.1, folder='./', show=True, save=False):
+    sns.set_theme()
+    sns.set_style("white")
+    sns.set_style("ticks")
+    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
+    sns.set_context("paper")
+    fig, ax = plt.subplots(2,1)
+    fig.set_size_inches(3.386,6.25)
+    sns.despine()
+    
+    ax[0].plot(time, w_init_avg, color=colors['model'], label='Model')
+    ax[0].fill_between(time,
+                       w_init_avg-w_init_err, 
+                       w_init_avg+w_init_err, 
+                       alpha=0.1, 
+                       color=colors['model'])
+    ax[0].set_xscale('log')
+    ax[0].set_xlim(xmin=time[0], xmax=time[-1])
+    ax[0].set_ylim(ymin=0, ymax=1)
+    ax[0].set_xlabel(r'$t$')
+    ax[0].set_ylabel(f'$W(t)$')
+    
+    d = w_ti_avg.shape[-1]
+    i_arr = np.arange(1, d+0.1)
+    c = ax[1].pcolormesh(time, i_arr, w_ti_avg.T, vmin=0, vmax=vmax, shading='auto')
+    ax[1].set_xscale('log')
+    ax[1].set_xlim(xmin=time[0], xmax=time[-1])
+    ax[1].set_ylim(ymin=i_arr[0], ymax=i_arr[-1])
+    ax[1].set_xlabel(r'$t$')
+    ax[1].set_ylabel(f'$i$')
+
+    if save:
+        fig.savefig(f'{folder}/fractal_survival_probability.pdf', bbox_inches="tight")
     if show:
         plt.show()
     sns.reset_orig()

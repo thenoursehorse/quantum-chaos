@@ -43,7 +43,7 @@ def delta_wj(N, j, Omega=2, scale_N=True):
     else:
         return 4.0 * Omega * (j - N/2.0)**2
 
-def delta_wj_fast(x, Omega=2, scale_N=True):
+def delta_wj_fast(x, Omega=2, scale_N=False):
     if scale_N:
         N = len(x)
         #return (4.0 * Omega / N) * x

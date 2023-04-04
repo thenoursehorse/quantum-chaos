@@ -61,10 +61,11 @@ if __name__ == '__main__':
     end = time.time()
     print("Spectral function construction took", end-start)
         
-    start = time.time()
-    bosons.set_unitary_evolve(num_ensembles=10)
-    end = time.time()
-    print("Time evolve unitaries took", end-start)
+    #start = time.time()
+    #bosons.set_unitary_evolve(Ti=0.1, Tf=1e3, Nt=10, num_ensembles=2)
+    ##bosons.set_unitary_evolve()
+    #end = time.time()
+    #print("Time evolve unitaries took", end-start)
         
     ## For frame_potential2, needs estimate=True
     #start = time.time()
@@ -76,19 +77,33 @@ if __name__ == '__main__':
     bosons.set_fractal_dimension()
     end = time.time()
     print("Fractal dimension took", end-start)
-        
+    
+    start = time.time()
+    psi = np.zeros(bosons._d)
+    psi[int(bosons._d/2)] = 1
+    bosons.set_survival_probability_amplitude(psi)
+    end = time.time()
+    print("Survival probability took", end-start)
+    
+    start = time.time()
+    bosons.set_fractal_dimension_state()
+    end = time.time()
+    print("Fractal dimension state took", end-start)
+            
     start = time.time()
     bosons.unfold_energies(save=args.save, show=args.show, plot=True)
     print("Unfolding energies took", end-start)
-
+    
     # Plots
     bosons.plot_eigenenergies(save=args.save, show=args.show)
     bosons.plot_ratios(save=args.save, show=args.show)
+    bosons.plot_spacings(save=args.save, show=args.show)
     bosons.plot_fractal_dimension(save=args.save, show=args.show)
     bosons.plot_frame_potential(save=args.save, show=args.show, window=0, estimate=False)
     bosons.plot_spectral_functions(save=args.save, show=args.show)
     bosons.plot_loschmidt_echo(save=args.save, show=args.show)
-    bosons.plot_spacings(save=args.save, show=args.show)
+    bosons.plot_fractal_dimension_state(save=args.save, show=args.show)
+    bosons.plot_survival_probability(psi, save=args.save, show=args.show)
         
     # Some averages
     r_avg, r_err = bosons.average_level_ratios()

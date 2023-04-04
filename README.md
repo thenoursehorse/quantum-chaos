@@ -52,12 +52,16 @@ To do
 1. Dicke model and spin models.
 1. Fix qutip eigenvectors to numpy arrays.
 1. A way to mask/remove eigenvalues.
-1. Survival probability/moments of states.
 1. OTOC and butterfly velocity for some specified operators.
+1. 2-Renyi entropy of state in bipartite space and compare with isospectral quantity.
+1. Partition eigenstates into energy blocks and do a heatmap of some quantities.
 1. Variance in number of eigenvalues.
 1. Vector coefficient distribution
 1. Canabalize all the old ensemble stuff.
 1. Add docstrings.
+1. Mobility edges of effective Hamiltonian
+1. Check how to see if anti-unitary.
+
 
 References
 ---------------

@@ -88,33 +88,13 @@ class GenericSystem(object):
         r_gse_avg = 32.0/15.0 * np.sqrt(3)/np.pi - 1.0/2.0
 
         return (np.mean(np.minimum(r, 1/r)) - r_poiss_avg) / (r_goe_avg - r_poiss_avg)
-
-    def fractal_dimension(self, q, dagger=False):
-        # FIXME take dagger so shannon entropy summed over eigenstates? How do I label them then?
-        if dagger:
-            return fractal_dimension(q, np.transpose(self._eigenvectors.conj(), (0,2,1)), sum_axis=1)
-        else:
-            return fractal_dimension(q, self._eigenvectors, sum_axis=1)
-        # FIXME calcualte the fractal dimension for an initial state
-        # at the centre of the chain. What happens to it over time?
     
-    def set_fractal_dimension(self, num_ensembles=10, q_keep=2):
+    def set_gaussian_matrices(self, num_ensembles=10):
         if num_ensembles is None:
             num_ensembles = self._num_ensembles
         if num_ensembles > self._num_ensembles:
             num_ensembles = self._num_ensembles
-
-        self._q_arr = np.arange(1,30+0.1)
-        self._q_arr = np.insert(self._q_arr, 0, 0.5)
         
-        self._dq_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_err = np.empty(shape=self._q_arr.shape)
-        self._dq_goe_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_goe_err = np.empty(shape=self._q_arr.shape)
-        self._dq_gue_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_gue_err = np.empty(shape=self._q_arr.shape)
-    
-        # For comparison to goe and gue
         # FIXME add gsu
         matrix_goe = np.empty([num_ensembles, self._d, self._d])
         matrix_gue = np.empty([num_ensembles, self._d, self._d], dtype=np.complex_)
@@ -123,26 +103,29 @@ class GenericSystem(object):
             matrix_gue[m,...] = scipy.stats.unitary_group.rvs(self._d)
         self._eigenenergies_goe, self._eigenvectors_goe = np.linalg.eigh(matrix_goe)
         self._eigenenergies_gue, self._eigenvectors_gue = np.linalg.eigh(matrix_gue)
-    
-        for i,q in enumerate(self._q_arr):
-            dq = self.fractal_dimension(q)
-            self._dq_avg[i] = np.mean(dq)
-            self._dq_err[i] = np.std(dq)
-    
-            dq_goe = fractal_dimension(q, self._eigenvectors_goe, sum_axis=1)
-            self._dq_goe_avg[i] = np.mean(dq_goe)
-            self._dq_goe_err[i] = np.std(dq_goe)
-            
-            dq_gue = fractal_dimension(q, self._eigenvectors_gue, sum_axis=1)
-            self._dq_gue_avg[i] = np.mean(dq_gue)
-            self._dq_gue_err[i] = np.std(dq_gue)
 
-            if q == q_keep:
-                self._dq = dq
-                self._dq_goe = dq_goe
-                self._dq_gue = dq_gue
-                self._q = q
+    def fractal_dimension(self, q, dagger=False):
+        # FIXME take dagger so shannon entropy summed over eigenstates? How do I label them then?
+        if dagger:
+            return fractal_dimension(q, np.transpose(self._eigenvectors.conj(), (0,2,1)), sum_axis=1)
+        else:
+            return fractal_dimension(q, self._eigenvectors, sum_axis=1)
+        
+    def survival_probability_amplitude(self, psi, num_ensembles=10, init=False):
+        if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+        if num_ensembles > self._num_ensembles:
+            num_ensembles = self._num_ensembles
+        
+        return survival_probability_amplitude(psi, 
+                                              self._time, 
+                                              self._eigenenergies[:num_ensembles], 
+                                              self._eigenvectors[:num_ensembles], 
+                                              init=init)
     
+    def fractal_dimension_state(self, q):
+        return fractal_dimension(q, self._w_ti_sqr, sum_axis=-1)
+
     def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, window=0, Nt_window=2, minimal=False):
         #Nt = int(np.ceil((Tf - Ti + 1) / dT))
         #self._time = np.linspace(Ti, Tf, Nt, endpoint=True)
@@ -200,7 +183,7 @@ class GenericSystem(object):
             self._c42_avg = np.mean(self._c42, axis=-1)
             self._c42_err = np.std(self._c42, axis=-1)
 
-    def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, dT=0.1, num_ensembles=2):
+    def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, num_ensembles=2):
         if num_ensembles is None:
             num_ensembles = self._num_ensembles
         if num_ensembles > self._num_ensembles:
@@ -270,7 +253,79 @@ class GenericSystem(object):
         #for t in range(len(self._time2)):
         #    for i in range(num_ensembles):
         #            self._unitary_fidelity[t,i] = np.abs(np.trace( self._Ut[t,i] ))**4 / self._d**2
+    
+    def set_fractal_dimension(self, num_ensembles=10, q_keep=2):
+        if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+        if num_ensembles > self._num_ensembles:
+            num_ensembles = self._num_ensembles
+
+        self._q_arr = np.arange(1,30+0.1)
+        self._q_arr = np.insert(self._q_arr, 0, 0.5)
         
+        self._dq_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_err = np.empty(shape=self._q_arr.shape)
+        self._dq_goe_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_goe_err = np.empty(shape=self._q_arr.shape)
+        self._dq_gue_avg = np.empty(shape=self._q_arr.shape)
+        self._dq_gue_err = np.empty(shape=self._q_arr.shape)
+    
+        # For comparison to goe and gue
+        if not hasattr(self, '_eigenenergies_goe'):
+            self.set_gaussian_matrices(num_ensembles=num_ensembles)
+        if not hasattr(self, '_eigenenergies_gue'): 
+            self.set_gaussian_matrices(num_ensembles=num_ensembles)
+    
+        for i,q in enumerate(self._q_arr):
+            dq = self.fractal_dimension(q)
+            self._dq_avg[i] = np.mean(dq)
+            self._dq_err[i] = np.std(dq)
+    
+            dq_goe = fractal_dimension(q, self._eigenvectors_goe, sum_axis=1)
+            self._dq_goe_avg[i] = np.mean(dq_goe)
+            self._dq_goe_err[i] = np.std(dq_goe)
+            
+            dq_gue = fractal_dimension(q, self._eigenvectors_gue, sum_axis=1)
+            self._dq_gue_avg[i] = np.mean(dq_gue)
+            self._dq_gue_err[i] = np.std(dq_gue)
+
+            if q == q_keep:
+                self._q_keep = q_keep
+                self._dq = dq
+                self._dq_goe = dq_goe
+                self._dq_gue = dq_gue
+
+    def set_survival_probability_amplitude(self, psi, num_ensembles=None):
+        if num_ensembles is None:
+            num_ensembles = self._num_ensembles
+        if num_ensembles > self._num_ensembles:
+            num_ensembles = self._num_ensembles
+        
+        self._w_init_sqr = self.survival_probability_amplitude(psi, num_ensembles, init=True)
+        self._w_ti_sqr = self.survival_probability_amplitude(psi, num_ensembles, init=False)
+    
+    def set_fractal_dimension_state(self, q_state_keep=1, psi=None, num_ensembles=None):
+        if not hasattr(self, '_w_ti_sqr'):
+            if psi is None:
+                raise ValueError('psi must not be None !')
+            self.set_survival_probability_amplitude(psi, num_ensembles)
+        
+        self._q_arr = np.arange(1,30+0.1)
+        self._q_arr = np.insert(self._q_arr, 0, 0.5)
+        
+        Nt = self._time.size
+        self._dq_state_avg = np.empty(shape=(Nt, self._q_arr.size))
+        self._dq_state_err = np.empty(shape=(Nt, self._q_arr.size))
+    
+        for i,q in enumerate(self._q_arr):
+            dq_state = self.fractal_dimension_state(q)
+            self._dq_state_avg[:,i] = np.mean(dq_state, axis=-1)
+            self._dq_state_err[:,i] = np.std(dq_state, axis=-1)
+
+            if q == q_state_keep:
+                self._q_state_keep = q_state_keep
+                self._dq_state = dq_state
+    
     def frame_potential(self, k=1):
         # NOTE read last paragraph in Sec. 4.3 on pg. 26 of 10.1007/JHEP11(2017)048. 
         # It basically says that the frame potential as calculated from the spectral
@@ -348,7 +403,6 @@ class GenericSystem(object):
 
     # FIXME plot Sigma^2, the variance in the number of eigenvalues, which shows the
     # long-range fluctuations. See Eq. 4 of doi:10.3390/e18100359 
-    # FIXME from above paper plot survival probability (Eq. 13)
     def plot_ratios(self, show=True, save=False):
         # NOTE ratios and level spacings are short-range fluctuations
         r = self.level_ratios()
@@ -376,6 +430,7 @@ class GenericSystem(object):
                                    [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
                                    [self._dq_err, self._dq_goe_err, self._dq_gue_err],
                                    self._q_arr,
+                                   q=self._q_keep,
                                    folder=self._folder, 
                                    show=show, 
                                    save=save)        
@@ -385,9 +440,40 @@ class GenericSystem(object):
                                    [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
                                    [self._dq_err, self._dq_goe_err, self._dq_gue_err],
                                    self._q_arr, 
+                                   q=self._q_keep,
                                    folder=self._folder, 
                                    show=show, 
                                    save=save)        
+    
+    def plot_fractal_dimension_state(self, show=True, save=False):
+        plot_fractal_dimension_state(self._time,
+                                     self._dq_state_avg,
+                                     self._dq_state_err,
+                                     self._q_arr, 
+                                    q=self._q_state_keep,
+                                     folder=self._folder, 
+                                     show=show, 
+                                     save=save)
+    
+    
+    def plot_survival_probability(self, psi, vmax=0.1, show=True, save=False):
+        w_init = np.abs(self._w_init_sqr)**2
+        w_init_avg = np.mean(w_init, axis=-1)
+        w_init_err = np.std(w_init, axis=-1)
+        
+        w_ti = np.abs(self._w_ti_sqr)**2
+        w_ti_avg = np.mean(w_ti, axis=1)
+        w_ti_err = np.std(w_ti, axis=1)
+        
+        plot_survival_probability(self._time,
+                                  w_init_avg,
+                                  w_ti_avg,
+                                  w_init_err,
+                                  w_ti_err,
+                                  vmax=vmax,
+                                  folder=self._folder, 
+                                  show=show, 
+                                  save=save)
     
     def plot_spectral_functions(self, show=True, save=False):
         if not hasattr(self, '_c2_avg'):
