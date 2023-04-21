@@ -50,15 +50,15 @@ if __name__ == '__main__':
 
     Omega = args.Omega
     
-    if np.abs(args.KChi) > 1e-8:
-        J = args.KChi / (16.0 * Omega)
-        # phi_noise = input * pi / Omega = input * pi / (pi/4) = 4 * input -> input = 0.05/4 = 0.0125
-        phi_noise = args.phi_noise * np.pi / Omega # pi because kicked_rotor already multiplies by pi
-        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}_disorder{args.phi_noise:.2f}'
-    else:
-        J = args.J
-        phi_noise = args.phi_noise
-        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}_disorder{args.phi_noise:.2f}'
+    #if np.abs(args.KChi) > 1e-8:
+    J = args.KChi / (16.0 * Omega)
+    # phi_noise = input * pi / Omega = input * pi / (pi/4) = 4 * input -> input = 0.05/4 = 0.0125
+    phi_noise = args.phi_noise * np.pi / Omega # pi because kicked_rotor already multiplies by pi
+    folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}_disorder{args.phi_noise:.2f}'
+    #else:
+    #    J = args.J
+    #    phi_noise = args.phi_noise
+    #    folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}_disorder{args.phi_noise:.2f}'
     
     if args.save_plots or args.save_data:
         os.makedirs(f'{folder}', exist_ok=True)
