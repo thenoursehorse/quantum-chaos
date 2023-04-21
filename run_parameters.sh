@@ -8,7 +8,7 @@ export root_folder=/scratch/NemotoU/henry/kicked-boson/
 N_arr=(300)
 num_ensembles_arr=(10)
 KChi_arr=$(seq 0 0.5 50)
-phi_noise_arr=$(seq 0.005 0.001 0.05)
+phi_noise_arr=$(seq 0.1 0.01 1)
 
 bosons() {
   N=$1

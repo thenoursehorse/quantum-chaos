@@ -32,7 +32,7 @@ if __name__ == '__main__':
     
     parser.add_argument('-theta_noise', type=float, default=0.0)
     #parser.add_argument('-phi_noise', type=float, default=0.05)
-    parser.add_argument('-phi_noise', type=float, default=0.0125)
+    parser.add_argument('-phi_noise', type=float, default=0.2)
     parser.add_argument('-eta_noise', type=float, default=0)
     
     parser.add_argument('-num_modes', type=int, default=2)
@@ -53,7 +53,9 @@ if __name__ == '__main__':
     #if np.abs(args.KChi) > 1e-8:
     J = args.KChi / (16.0 * Omega)
     # phi_noise = input * pi / Omega = input * pi / (pi/4) = 4 * input -> input = 0.05/4 = 0.0125
-    phi_noise = args.phi_noise * np.pi / Omega # pi because kicked_rotor already multiplies by pi
+    # divide by 16 because these values are tiny, so that input should be multiplied by 100
+    # pi because kicked_rotor already multiplies by pi
+    phi_noise = args.phi_noise * np.pi / (16 * Omega)
     folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}_disorder{args.phi_noise:.2f}'
     #else:
     #    J = args.J
