@@ -35,6 +35,8 @@ Dependencies
 
 * numpy
 * scipy
+* seaborn
+* h5py
 * (Optional) qutip for creating the systems. Note that the GenericSystem class assumes 
 that eigenvectors and eigenvalues are numpy arrays.
 

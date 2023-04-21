@@ -130,5 +130,6 @@ dmypy.json
 
 # some folders
 figs/
+data/
 
 .DS_Store

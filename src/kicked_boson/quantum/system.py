@@ -2,6 +2,8 @@ import numpy as np
 import scipy
 from copy import deepcopy
 
+import h5py
+
 from kicked_boson.quantum.operators import *
 from kicked_boson.functions import *
 

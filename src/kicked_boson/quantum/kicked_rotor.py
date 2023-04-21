@@ -47,16 +47,10 @@ class BosonChain(GenericSystem):
         #self._H_eff_list = [self.make_H_eff(self._U[m]) for m in range(self._num_ensembles)]
         self._eigenenergies = []
         self._eigenvectors = []
-        if self._use_qutip:
-            for m in range(self._num_ensembles):
-                e, v = self.make_eigenenergies(self._U[m])
-                self._eigenenergies.append(e)
-                self._eigenvectors.append(v)
-        else:
-            self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
-            self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
-            for m in range(self._num_ensembles):
-                self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
+        self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
+        self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
+        for m in range(self._num_ensembles):
+            self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
 
     def make_H_eff(self, U):
         if self._use_qutip:
@@ -71,27 +65,21 @@ class BosonChain(GenericSystem):
         
         #return U.eigenenergies()
         
-        #e, v = np.linalg.eigh(H_eff)
-        #eigenenergies = e
-        #return eigenenergies
+        #e, v = np.linalg.eigh(H_eff.full())
+        #e, v = np.linalg.eigh(H_eff.todense())
         
-        #ev = np.linalg.eigvals(U.todense())
-        #return np.sort(-1 * np.angle( ev ))
-
         if self._use_qutip: 
-            #e, v = np.linalg.eig(U.todense())
-            e, v = U.eigenstates()
-            ev = -1 * np.angle( e )
-            ind = ev.argsort()
-            # FIXME sort out what to do with qutip here
-            # It returns a 1D numpy array of Qobj, which is not actually nice to work with.
-            # So I should just expensively convert it to 2D numpy arrays
-            return ev, v # fixme sort
+            e, v = np.linalg.eig(U.full())
+            #e, v_qt = U.eigenstates()
+            #v = np.empty(shape=(self.d, self.d), dtype=np.complex_)
+            #for j in range(self.d):
+            #    v[:,j] = v_qt[j].full().flatten()
         else:
             e, v = np.linalg.eig(U.todense())
-            ev = -1 * np.angle( e )
-            ind = ev.argsort()
-            return ev[ind], v[:,ind] 
+        
+        ev = -1 * np.angle( e )
+        ind = ev.argsort()
+        return ev[ind], v[:,ind] 
     
     def make_operators(self):
         '''
@@ -135,16 +123,28 @@ class BosonChain(GenericSystem):
             DiagBand = phi_list
             H1 = scipy.sparse.csc_array( np.diag(DiagBand) )
             
+            # Now TR symmetry breaking
+            #OffDiagBand = theta_list[:self._N-1]
+            #H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            
             # TR symmetry breaking like Victor does (I don't think it does anything)
-            #OffDiagBand = (np.asarray(theta_list) * np.exp(1j*np.asarray(eta_list)))[:self._N-1]
+            OffDiagBand = theta_list[:self._N-1] * np.exp(1j*eta_list[:self._N-1])
+            H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            
+            if self._periodic:
+                H2 = H2.tolil()
+                H2[0,-1] = theta_list[-1] * np.exp(1j*eta_list[-1])
+                H2[-1,0] = (theta_list[-1] * np.exp(1j*eta_list[-1])).conj()
             
             # TR symmetry breaking like Haldane model
-            OffDiagBand = theta_list[:self._N-1]
-            OffOffDiagBand = 1j*eta_list[:self._N-2]
-
-            H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
-            H2 += scipy.sparse.coo_array( np.diag(OffOffDiagBand, 2) + np.diag(OffOffDiagBand.conj(), -2) )
+            #OffOffDiagBand = 1j*eta_list[:self._N-2]
+            #H2 += scipy.sparse.coo_array( np.diag(OffOffDiagBand, 2) + np.diag(OffOffDiagBand.conj(), -2) )
+            #if self._periodic:
+            #    H2 = H2.tolil()
+            #    something here to handle it
+            
             H2 = H2.tocsc()
+            
             U = scipy.sparse.linalg.expm(-1j*H2) @ scipy.sparse.linalg.expm(-1j*H1)
 
         return U 

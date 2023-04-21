@@ -17,42 +17,68 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=description)
     parser.add_argument('-N', type=int, default=300)
-    parser.add_argument('-num_ensembles', type=int, default=100)
+    parser.add_argument('-num_ensembles', type=int, default=10)
+    
     parser.add_argument('-J', type=float, default=1)
     #parser.add_argument('-J', type=float, default=8.9/(4.0*np.pi))
-    #parser.add_argument('-Omega', type=float, default=0.25*np.pi)
-    parser.add_argument('-Omega', type=float, default=0.25)
+    
+    parser.add_argument('-KChi', type=float, default=7)
+    
+    parser.add_argument('-Omega', type=float, default=np.pi/4.0)
+    #parser.add_argument('-Omega', type=float, default=0.25)
+    
     parser.add_argument('-eta', type=float, default=0)
     #parser.add_argument('-eta', type=float, default=golden_ratio())
+    
     parser.add_argument('-theta_noise', type=float, default=0.0)
-    parser.add_argument('-phi_noise', type=float, default=0.05)
+    #parser.add_argument('-phi_noise', type=float, default=0.05)
+    parser.add_argument('-phi_noise', type=float, default=0.0125)
     parser.add_argument('-eta_noise', type=float, default=0)
+    
     parser.add_argument('-num_modes', type=int, default=2)
     parser.add_argument('-excitations', type=int, default=1)
     parser.add_argument('-periodic', type=int, default=0)
+    
+    parser.add_argument('-use_qutip', type=int, default=0)
+    
     parser.add_argument('-root_folder', type=str, default='./')
-    parser.add_argument('-save', type=int, default=0)
-    parser.add_argument('-show', type=int, default=1)
+    parser.add_argument('-save_plots', type=int, default=0)
+    parser.add_argument('-show_plots', type=int, default=1)
+    parser.add_argument('-save_data', type=int, default=0)
     args = parser.parse_args()
     print(vars(args))
 
-    folder = f'{args.root_folder}/figs/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}'
-    if args.save:
+    Omega = args.Omega
+    
+    if np.abs(args.KChi) > 1e-8:
+        J = args.KChi / (16.0 * Omega)
+        # phi_noise = input * pi / Omega = input * pi / (pi/4) = 4 * input -> input = 0.05/4 = 0.0125
+        phi_noise = args.phi_noise * np.pi / Omega # pi because kicked_rotor already multiplies by pi
+        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}'
+    else:
+        J = args.J
+        phi_noise = args.phi_noise
+        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}'
+    
+    if args.save_plots or args.save_data:
         os.makedirs(f'{folder}', exist_ok=True)
+    if args.save_plots:
+        print(f"Saving plots to folder '{folder}'")
 
     start = time.time()
     bosons = BosonChain(N=args.N,
                         num_ensembles=args.num_ensembles,
-                        J=args.J,
-                        Omega=args.Omega,
+                        J=J,
+                        Omega=Omega,
                         eta=args.eta,
                         theta_noise=args.theta_noise,
-                        phi_noise=args.phi_noise,
+                        phi_noise=phi_noise,
                         eta_noise=args.eta_noise,
                         num_modes=args.num_modes,
                         excitations=args.excitations,
                         periodic=args.periodic,
-                        folder=folder) 
+                        folder=folder,
+                        use_qutip=args.use_qutip) 
     end = time.time()
     print("Unitary construction took", end-start)
         
@@ -91,27 +117,41 @@ if __name__ == '__main__':
     print("Fractal dimension state took", end-start)
             
     start = time.time()
-    bosons.unfold_energies(save=args.save, show=args.show, plot=True)
+    bosons.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
     print("Unfolding energies took", end-start)
     
     # Plots
-    bosons.plot_eigenenergies(save=args.save, show=args.show)
-    bosons.plot_ratios(save=args.save, show=args.show)
-    bosons.plot_spacings(save=args.save, show=args.show)
-    bosons.plot_fractal_dimension(save=args.save, show=args.show)
-    bosons.plot_frame_potential(save=args.save, show=args.show, window=0, estimate=False)
-    bosons.plot_spectral_functions(save=args.save, show=args.show)
-    bosons.plot_loschmidt_echo(save=args.save, show=args.show)
-    bosons.plot_fractal_dimension_state(save=args.save, show=args.show)
-    bosons.plot_survival_probability(psi, save=args.save, show=args.show)
+    if args.save_plots or args.show_plots:
+        bosons.plot_eigenenergies(save=args.save_plots, show=args.show_plots)
+        bosons.plot_ratios(save=args.save_plots, show=args.show_plots)
+        bosons.plot_spacings(save=args.save_plots, show=args.show_plots)
+        bosons.plot_fractal_dimension(save=args.save_plots, show=args.show_plots)
+        bosons.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, estimate=False)
+        bosons.plot_spectral_functions(save=args.save_plots, show=args.show_plots)
+        bosons.plot_loschmidt_echo(save=args.save_plots, show=args.show_plots)
+        bosons.plot_fractal_dimension_state(save=args.save_plots, show=args.show_plots)
+        bosons.plot_survival_probability(psi, save=args.save_plots, show=args.show_plots)
         
     # Some averages
     r_avg, r_err = bosons.average_level_ratios()
     eta_ratios = bosons.eta_ratios()
     p_pois, p_goe, p_gue = bosons.chi_distance()
 
-    print(f'eta = {eta_ratios}')
+    if args.save_data:
+        filename = folder + "/data.h5"
+        print(f"Saving data to '{filename}'")
+        modeldata = GenericSystemData(filename=filename,
+                                      r_avg=r_avg,
+                                      r_err=r_err,
+                                      eta_ratios=eta_ratios,
+                                      p_pois=p_pois,
+                                      p_goe=p_goe,
+                                      p_gue=p_gue,
+                                     )
+        modeldata.save()
 
-    #modeldata = SystemData(filename=filename_elm,
-    #                    tlist=tlist,
-    #    nndata.save()    
+        # TODO
+        # fix phi (Omega) to pi/4
+        # fix theta (J) to Kchi/(16phi)
+        # Now vary Kchi
+        # Now vary J.
