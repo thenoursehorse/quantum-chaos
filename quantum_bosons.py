@@ -54,11 +54,11 @@ if __name__ == '__main__':
         J = args.KChi / (16.0 * Omega)
         # phi_noise = input * pi / Omega = input * pi / (pi/4) = 4 * input -> input = 0.05/4 = 0.0125
         phi_noise = args.phi_noise * np.pi / Omega # pi because kicked_rotor already multiplies by pi
-        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}'
+        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/KChi{args.KChi:.2f}_disorder{args.phi_noise:.2f}'
     else:
         J = args.J
         phi_noise = args.phi_noise
-        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}'
+        folder = f'{args.root_folder}/data/N{args.N}_Nsamp{args.num_ensembles}/J{args.J:.2f}_Omega{args.Omega:.2f}_disorder{args.phi_noise:.2f}'
     
     if args.save_plots or args.save_data:
         os.makedirs(f'{folder}', exist_ok=True)
@@ -118,10 +118,12 @@ if __name__ == '__main__':
             
     start = time.time()
     bosons.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
+    end = time.time()
     print("Unfolding energies took", end-start)
     
     # Plots
     if args.save_plots or args.show_plots:
+        start = time.time()
         bosons.plot_eigenenergies(save=args.save_plots, show=args.show_plots)
         bosons.plot_ratios(save=args.save_plots, show=args.show_plots)
         bosons.plot_spacings(save=args.save_plots, show=args.show_plots)
@@ -131,6 +133,8 @@ if __name__ == '__main__':
         bosons.plot_loschmidt_echo(save=args.save_plots, show=args.show_plots)
         bosons.plot_fractal_dimension_state(save=args.save_plots, show=args.show_plots)
         bosons.plot_survival_probability(psi, save=args.save_plots, show=args.show_plots)
+        end = time.time()
+        print("Plotting took", end-start)
         
     # Some averages
     r_avg, r_err = bosons.average_level_ratios()

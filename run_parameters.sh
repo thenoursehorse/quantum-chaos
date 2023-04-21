@@ -1,7 +1,7 @@
 #!/bin/bash
 
 njobs=10
-source ${HOME}/venv/qutip_qist/bin/activate
+source ${HOME}/venv/kicked-boson_qist/bin/activate
 export exec_folder=${HOME}/GitHub/kicked-boson/
 export root_folder=/scratch/NemotoU/henry/kicked-boson/
 
