@@ -3,7 +3,7 @@
 njobs=10
 source ${HOME}/venv/kicked-boson_qist/bin/activate
 export exec_folder=${HOME}/GitHub/kicked-boson/
-export root_folder=/scratch/NemotoU/henry/kicked-boson/
+export root_folder=/scratch/NemotoU/henry/kicked-boson/boson_sampling
 
 N_arr=(300)
 num_ensembles_arr=(10)
@@ -18,7 +18,7 @@ bosons() {
   
   outfile=bosons_N${N}_num_ensembles${g}_KChi${KChi}_phi_noise${phi_noise}.out
 
-  python3 -u ${exec_folder}/quantum_bosons.py \
+  python3 -u ${exec_folder}/make_data.py \
     -N ${N} \
     -num_ensembles ${num_ensembles} \
     -KChi ${KChi} \

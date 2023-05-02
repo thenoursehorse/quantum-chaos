@@ -43,21 +43,28 @@ class BosonChain(GenericSystem):
             self.make_operators()
         self._U = [self.make_unitary() for _ in range(self._num_ensembles)]
         self._d = self._U[0].shape[0]
-        # FIXME very expensive to calculate because of the logm
-        #self._H_eff_list = [self.make_H_eff(self._U[m]) for m in range(self._num_ensembles)]
         self._eigenenergies = []
         self._eigenvectors = []
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
         self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
         for m in range(self._num_ensembles):
             self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
+        self.make_H_eff()
 
-    def make_H_eff(self, U):
-        if self._use_qutip:
-            self._H_eff = 1j * U.logm() / self.T
+    def make_H_eff(self, U=None):
+        if U is None:
+            self._H_eff = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
+            for m in range(self._num_ensembles):
+                self._H_eff[m] = self._eigenvectors[m] @ \
+                                    np.diag(self._eigenenergies[m]) @ \
+                                        self._eigenvectors[m].conj().T
+            return self.H_eff
         else:
-            self._H_eff = 1j * scipy.linalg.logm(U.todense()) / self.T
-        return self._H_eff
+            # NOTE very expensive to calculate because of the logm
+            if self._use_qutip:
+                return 1j * U.logm() / self.T
+            else:
+                return 1j * scipy.linalg.logm(U.todense()) / self.T
 
     def make_eigenenergies(self, U):
         #eigenenergies = H_eff.eigenenergies() # qutip

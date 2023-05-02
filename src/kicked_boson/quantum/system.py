@@ -19,10 +19,14 @@ class GenericSystemData(object):
                 if key != 'filename':
                     f.create_dataset(key, data=self.__dict__[key])
 
-    def load(self):
+    def load(self, name=None):
         with h5py.File(self.filename, 'r') as f:
-            for key in f.keys():
-                self.__dict__[key] = np.array(f[key])
+            if name is None:
+                for key in f.keys():
+                    self.__dict__[key] = np.array(f[key])
+            else:
+                self.__dict__[name] = np.array(f[name])
+
 
 class GenericSystem(object):
     def __init__(self, num_ensembles=1, folder='figs/', T=1):
@@ -69,6 +73,7 @@ class GenericSystem(object):
         r = self.level_ratios()
         r_avg = np.mean(r, axis=1)
         r_err = np.std(r_avg)
+        r_I = error_interval(r_avg)
         r_avg = np.mean(r_avg)
         
         #y, x = np.histogram(r, bins='auto', range=(0,1), density=True)
@@ -79,7 +84,7 @@ class GenericSystem(object):
         # <r> = 4 - 2 sqrt(3) = 0.53590 GOE 
         # <r> = 2 sqrt(3) / pi - 1/2 = 0.60266 GUE
         # <r> = 32/15 sqrt(3)/pi - 1/2 = 0.67617 GSE
-        return r_avg, r_err
+        return r_avg, r_err, r_I
     
     def eta_ratios(self):
         r = self.level_ratios()
@@ -156,14 +161,14 @@ class GenericSystem(object):
         self._c4 = (self._c2 * self._d**2)**2 / self._d**4
 
         self._c2_avg = np.mean(self._c2, axis=-1)
-        self._c2_err = np.std(self._c2, axis=-1)
+        self._c2_I = error_interval(self._c2, axis=-1)
         
         self._c4_avg = np.mean(self._c4, axis=-1)
-        self._c4_err = np.std(self._c4, axis=-1)
+        self._c4_I = error_interval(self._c4, axis=-1)
 
         if not minimal:
             self._c41 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
-            self._c42 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
+            self._c42 = np.empty([Nt, self._num_ensembles])
             for m in range(N_batch):
                 if window > 0:
                     window_t = np.linspace(-window/2, window/2, Nt_window)
@@ -181,9 +186,9 @@ class GenericSystem(object):
                         spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time)
             
             self._c41_avg = np.mean(self._c41, axis=-1)
-            self._c41_err = np.std(self._c41, axis=-1)
+            self._c41_I = error_interval(self._c41, axis=-1),
             self._c42_avg = np.mean(self._c42, axis=-1)
-            self._c42_err = np.std(self._c42, axis=-1)
+            self._c42_I = error_interval(self._c42, axis=-1),
 
     def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, num_ensembles=2):
         if num_ensembles is None:
@@ -266,11 +271,11 @@ class GenericSystem(object):
         self._q_arr = np.insert(self._q_arr, 0, 0.5)
         
         self._dq_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_err = np.empty(shape=self._q_arr.shape)
+        self._dq_I = np.empty(shape=(2,*self._q_arr.shape))
         self._dq_goe_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_goe_err = np.empty(shape=self._q_arr.shape)
+        self._dq_goe_I = np.empty(shape=(2,*self._q_arr.shape))
         self._dq_gue_avg = np.empty(shape=self._q_arr.shape)
-        self._dq_gue_err = np.empty(shape=self._q_arr.shape)
+        self._dq_gue_I = np.empty(shape=(2,*self._q_arr.shape))
     
         # For comparison to goe and gue
         if not hasattr(self, '_eigenenergies_goe'):
@@ -281,15 +286,16 @@ class GenericSystem(object):
         for i,q in enumerate(self._q_arr):
             dq = self.fractal_dimension(q)
             self._dq_avg[i] = np.mean(dq)
-            self._dq_err[i] = np.std(dq)
+            #self._dq_err[i] = np.std(dq)
+            self._dq_I[...,i] = error_interval(dq.flatten(), axis=0)
     
             dq_goe = fractal_dimension(q, self._eigenvectors_goe, sum_axis=1)
             self._dq_goe_avg[i] = np.mean(dq_goe)
-            self._dq_goe_err[i] = np.std(dq_goe)
+            self._dq_goe_I[...,i] = error_interval(dq_goe.flatten(), axis=0)
             
             dq_gue = fractal_dimension(q, self._eigenvectors_gue, sum_axis=1)
             self._dq_gue_avg[i] = np.mean(dq_gue)
-            self._dq_gue_err[i] = np.std(dq_gue)
+            self._dq_gue_I[...,i] = error_interval(dq_gue.flatten(), axis=0)
 
             if q == q_keep:
                 self._q_keep = q_keep
@@ -317,12 +323,13 @@ class GenericSystem(object):
         
         Nt = self._time.size
         self._dq_state_avg = np.empty(shape=(Nt, self._q_arr.size))
-        self._dq_state_err = np.empty(shape=(Nt, self._q_arr.size))
+        self._dq_state_I = np.empty(shape=(2, Nt, self._q_arr.size))
     
         for i,q in enumerate(self._q_arr):
             dq_state = self.fractal_dimension_state(q)
             self._dq_state_avg[:,i] = np.mean(dq_state, axis=-1)
-            self._dq_state_err[:,i] = np.std(dq_state, axis=-1)
+            #self._dq_state_err[:,i] = np.std(dq_state, axis=-1)
+            self._dq_state_I[...,i] = error_interval(dq_state, axis=-1)
 
             if q == q_state_keep:
                 self._q_state_keep = q_state_keep
@@ -334,18 +341,20 @@ class GenericSystem(object):
         # form factors is valid for any ensemble whose measure is
         # unitarily invariant
 
-        if not hasattr(self, '_c4_avg'):
+        if not hasattr(self, '_c4'):
             self.set_spectral_functions()
-        if not hasattr(self, '_c2_avg'):
+        if not hasattr(self, '_c2'):
             self.set_spectral_functions()
         if k == 2:
-            if not hasattr(self, '_c41_avg'):
+            if not hasattr(self, '_c41'):
                 self.set_spectral_functions()
-            if not hasattr(self, '_c42_avg'):
+            if not hasattr(self, '_c42'):
                 self.set_spectral_functions()
-            return frame_potential(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
+            #return frame_potential(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
+            return frame_potential(self._d, self._c2, self._c4, self._c41, self._c42, k=2)
         else:
-            return frame_potential(self._d, self._c2_avg, self._c4_avg)
+            #return frame_potential(self._d, self._c2_avg, self._c4_avg)
+            return frame_potential(self._d, self._c2, self._c4)
         
     def frame_potential2(self):
         if not hasattr(self, '_unitary_fidelity'):
@@ -354,13 +363,13 @@ class GenericSystem(object):
     
     def loschmidt_echo(self, kind='2nd'):
         if kind == '2nd':
-            if not hasattr(self, '_c4_avg'):
+            if not hasattr(self, '_c4'):
                 self.set_spectral_functions()
-            return loschmidt_echo(self._d, c4=self._c4_avg, kind=kind)
+            return loschmidt_echo(self._d, c4=self._c4, kind=kind)
         elif kind == '1st':
-            if not hasattr(self, '_c2_avg'):
+            if not hasattr(self, '_c2'):
                 self.set_spectral_functions()
-            return loschmidt_echo(self._d, c2=self._c2_avg, kind=kind)
+            return loschmidt_echo(self._d, c2=self._c2, kind=kind)
         else:
             raise ValueError('Unrecognized kind !')
     
@@ -430,7 +439,7 @@ class GenericSystem(object):
             plot_fractal_dimension([x, x_goe, x_gue],
                                    [self._dq, self._dq_goe, self._dq_gue],
                                    [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
-                                   [self._dq_err, self._dq_goe_err, self._dq_gue_err],
+                                   [self._dq_I, self._dq_goe_I, self._dq_gue_I],
                                    self._q_arr,
                                    q=self._q_keep,
                                    folder=self._folder, 
@@ -440,7 +449,7 @@ class GenericSystem(object):
             plot_fractal_dimension([self._eigenenergies/self._N, self._eigenenergies_goe/self._N, self._eigenenergies_gue/self._N],
                                    [self._dq, self._dq_goe, self._dq_gue],
                                    [self._dq_avg, self._dq_goe_avg, self._dq_gue_avg],
-                                   [self._dq_err, self._dq_goe_err, self._dq_gue_err],
+                                   [self._dq_I, self._dq_goe_I, self._dq_gue_I],
                                    self._q_arr, 
                                    q=self._q_keep,
                                    folder=self._folder, 
@@ -450,9 +459,9 @@ class GenericSystem(object):
     def plot_fractal_dimension_state(self, show=True, save=False):
         plot_fractal_dimension_state(self._time,
                                      self._dq_state_avg,
-                                     self._dq_state_err,
                                      self._q_arr, 
-                                    q=self._q_state_keep,
+                                     q=self._q_state_keep,
+                                     dq_state_I=self._dq_state_I,
                                      folder=self._folder, 
                                      show=show, 
                                      save=save)
@@ -461,17 +470,15 @@ class GenericSystem(object):
     def plot_survival_probability(self, psi, vmax=0.1, show=True, save=False):
         w_init = np.abs(self._w_init_sqr)**2
         w_init_avg = np.mean(w_init, axis=-1)
-        w_init_err = np.std(w_init, axis=-1)
+        w_init_I = error_interval(w_init, axis=-1)
         
         w_ti = np.abs(self._w_ti_sqr)**2
         w_ti_avg = np.mean(w_ti, axis=1)
-        w_ti_err = np.std(w_ti, axis=1)
         
         plot_survival_probability(self._time,
                                   w_init_avg,
                                   w_ti_avg,
-                                  w_init_err,
-                                  w_ti_err,
+                                  w_init_I,
                                   vmax=vmax,
                                   folder=self._folder, 
                                   show=show, 
@@ -482,12 +489,13 @@ class GenericSystem(object):
             self.set_spectral_functions()
         if not hasattr(self, '_c4_avg'):
             self.set_spectral_functions()
+
         plot_spectral_functions(time=self._time, 
                                 c2=self._c2_avg, 
                                 c4=self._c4_avg,
                                 d=self._d,
-                                #c2_err=self._c2_err, 
-                                #c4_err=self._c4_err,
+                                c2_I=self._c2_I,
+                                c4_I=self._c4_I,
                                 folder=self._folder, 
                                 show=show, 
                                 save=save)
@@ -495,20 +503,45 @@ class GenericSystem(object):
     def plot_frame_potential(self, window=0, estimate=True, show=True, save=False):
         F1 = self.frame_potential(k=1)
         F2 = self.frame_potential(k=2)
+        F1_avg = np.mean(F1, axis=-1)
+        F1_I = error_interval(F1, axis=-1)
+        F2_avg = np.mean(F2, axis=-1)
+        F2_I = error_interval(F2, axis=-1)
+        
         if estimate:
             F1_est, F2_est = self.frame_potential2()
-            plot_frame_potential([self._time, F1, F2], \
-                                 [self._time2, F1_est, F2_est], \
+            plot_frame_potential(self._time, \
+                                 F1_avg, \
+                                 F2_avg, \
+                                 F1_I, \
+                                 F2_I, \
+                                 self._time2, \
+                                 F1_est, \
+                                 F2_est, \
                                  window=window, folder=self._folder, show=show, save=save)
         else:
-            plot_frame_potential([self._time, F1, F2], \
+            plot_frame_potential(self._time, \
+                                 F1_avg, \
+                                 F2_avg, \
+                                 F1_I, \
+                                 F2_I, \
                                  folder=self._folder, show=show, save=save)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare
         le1 = self.loschmidt_echo(kind='1st')
         le2 = self.loschmidt_echo(kind='2nd')
-        plot_loschmidt_echo(self._time, le1, le2, self._d, folder=self._folder, show=show, save=save)
+        le1_avg = np.mean(le1, axis=-1)
+        le1_I = error_interval(le1, axis=-1)
+        le2_avg = np.mean(le2, axis=-1)
+        le2_I = error_interval(le2, axis=-1)
+        plot_loschmidt_echo(self._time, \
+                            le1_avg, \
+                            le2_avg, \
+                            self._d, \
+                            le1_I, \
+                            le2_I, \
+                            folder=self._folder, show=show, save=save)
     
     def chi_distance(self, kind='ratios'):
         if kind == 'ratios':
@@ -517,6 +550,10 @@ class GenericSystem(object):
             obs = self.level_spacings(self._energies_unfolded)
         xs, ys = ecdf(obs) # FIXME do the test by incorporating the error too?
         return chi_distance(np.mean(xs, axis=0), kind=kind) 
+    
+    @property
+    def d(self):
+        return self._d
 
     @property
     def U(self):
@@ -527,9 +564,9 @@ class GenericSystem(object):
         return self._eigenenergies
     
     @property
+    def eigenvectors(self):
+        return self._eigenvectors
+    
+    @property
     def H_eff(self):
         return self._H_eff
-
-    @property
-    def d(self):
-        return self._d

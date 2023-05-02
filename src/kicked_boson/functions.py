@@ -74,7 +74,38 @@ def g_poiss(t):
 
 def g_gue(t):
     return (1j/8) * ( 4*t - np.exp(-np.pi*t**2/16) * (np.pi*t**2 - 8) * (scipy.special.erfi(np.sqrt(np.pi)*t/4) - 1) )
-     
+
+def error_interval(A, axis=-1, num_samples=666, confidence=0.90, stat=np.mean, method='percentile'):
+    '''
+    Something
+    '''
+    if method == 'percentile':
+        return np.percentile(A,[100*(1-confidence)/2,100*(1-(1-confidence)/2)], axis=axis)
+    
+    elif method == 'bootstrap_empirical':
+        # See https://elizavetalebedeva.com/bootstrapping-confidence-intervals-the-basics/
+        # https://math.mit.edu/~dav/05.dir/class24-prep-a.pdf
+        A_avg = stat(A, axis=axis)
+        rng = np.random.default_rng()
+        values = np.array([stat(rng.choice(A, size=A.shape[axis], axis=axis, replace=True), axis=axis) for _ in range(num_samples)])
+        deltastar = values - A_avg
+        CI = np.percentile(deltastar,[100*(1-confidence)/2,100*(1-(1-confidence)/2)], axis=0)
+        return [A_avg-CI[0], A_avg-CI[1]]
+    
+    elif method == 'bootstrap_percentile':
+        # See https://towardsdatascience.com/how-to-calculate-confidence-intervals-in-python-a8625a48e62b
+        rng = np.random.default_rng()
+        values = np.array([stat(rng.choice(A, size=A.shape[axis], axis=axis, replace=True), axis=axis) for _ in range(num_samples)])
+        return np.percentile(values,[100*(1-confidence)/2,100*(1-(1-confidence)/2)], axis=0)
+    
+    elif method == 'normal_CI':
+        A_avg = stat(A, axis=axis)
+        A_se = np.std(A, axis=axis) / A.shape[axis]
+        return [A_avg-1.96*A_se, A_avg+1.96*A_se]
+    
+    else:
+        raise ValueError('Unrecognized error interval !')
+
 def ecdf(x):
     size = x.shape[-1]
     ys = np.arange(1, size+1)/float(size)
@@ -224,19 +255,23 @@ def spectral_functions(e, d, order, t):
         #c = np.sum( np.exp(1j*e*t) )
         c = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
         c *= c.conj()
-        c = c.real**2
-        c /= d**4
+        c = c.real
+        c /= d**2
+        c = c**2
+        c /= d**2
 
     elif order == 41: # same as order=3 but with a minus sign
         c_l = np.sum( np.exp(-2*1j * t[:, None, None] * e) , axis=-1)
         c_r = np.sum( np.exp(1j * t[:, None, None] * e) , axis=-1)
-        c = c_r * c_r * c_l
-        # FIXME scale here by d**3
+        c = c_r * c_r
+        c /= d**2
+        c *= (c_l / d)
         
     elif order == 42:
         c = np.sum( np.exp(2*1j * t[:, None, None] * e) , axis=-1)
         c *= c.conj()
-        # FIXME scale here by d**2
+        c = c.real
+        c /= d**2
 
     return c
     
@@ -247,15 +282,37 @@ def frame_potential(d, c2, c4, c41=None, c42=None, k=1):
     if k == 1:
         return (d**2 / (d**2 - 1)) * (d**2 * c4 - 2*c2 + 1)
     elif k == 2:
-        c2 = c2*d**2 # NOTE c2 *= d**2 will modify c2 in system method, yikes
-        c4 = c4*d**4
+        #c2 = c2*d**2 # NOTE c2 *= d**2 will modify c2 in system method, yikes
+        #c4 = c4*d**4
+        #c41 = c41*d**3
+        #c42 = c42*d**2
         # NOTE this ends up having zero imag even though c41 is complex
-        return ( (d**4 - 8*d**2 + 6)*c4**2 +4*d**2*(d**2-9)*c4 + 4*(d**6 - 9*d**4 + 4*d*2 + 24)*c2**2 \
-                - 8*d**2*(d**4 - 11*d**2 + 18)*c2 + 2*(d**4 - 7*d**2 + 12)*c41**2 - 4*d**2*(d**2 - 9)*c42 \
-                    + (d**4 - 8*d**2 + 6)*c42**2 - 8*(d**4 - 8*d**2 + 6)*c2*c4 - 4*d*(d**2 -4)*c4*c41 \
-                        + 16*d*(d**2 - 4)*c2*c41 - 8*(d**2 + 6)*c2*c42 + 2*(d**2 + 6)*c4*c42 \
-                            -4*d*(d**2 - 4)*c41*c42 + 2*d**4*(d**4 - 12*d**2 +27) ) \
-                                / ((d-3)*(d-2)*(d-1)*d**2*(d+1)*(d+2)*(d+3) )
+        #return ( (d**4 - 8*d**2 + 6)*c4**2 +4*d**2*(d**2-9)*c4 + 4*(d**6 - 9*d**4 + 4*d*2 + 24)*c2**2 \
+        #        - 8*d**2*(d**4 - 11*d**2 + 18)*c2 + 2*(d**4 - 7*d**2 + 12)*c41**2 - 4*d**2*(d**2 - 9)*c42 \
+        #            + (d**4 - 8*d**2 + 6)*c42**2 - 8*(d**4 - 8*d**2 + 6)*c2*c4 - 4*d*(d**2 -4)*c4*c41 \
+        #                + 16*d*(d**2 - 4)*c2*c41 - 8*(d**2 + 6)*c2*c42 + 2*(d**2 + 6)*c4*c42 \
+        #                    -4*d*(d**2 - 4)*c41*c42 + 2*d**4*(d**4 - 12*d**2 + 27) ) \
+        #                        / ((d-3)*(d-2)*(d-1)*d**2*(d+1)*(d+2)*(d+3) )
+
+        # FIXME 
+        #C = (d-3)*(d-2)*(d-1)*(d+1)*(d+2)*(d+3)
+        A = (d**4 - 8*d**2 + 6)*c4**2*d**6 +4*d**2*(d**2-9)*c4*d**2 + 4*(d**6 - 9*d**4 + 4*d*2 + 24)*c2**2*d**2 \
+                - 8*d**2*(d**4 - 11*d**2 + 18)*c2 + 2*(d**4 - 7*d**2 + 12)*np.abs(c41)**2*d**4 - 4*d**2*(d**2 - 9)*c42 \
+                    + (d**4 - 8*d**2 + 6)*c42**2*d**2 - 8*(d**4 - 8*d**2 + 6)*c2*c4*d**4 - 4*d*(d**2 -4)*c4*c41*d**5 \
+                        + 16*d*(d**2 - 4)*c2*c41*d**3 - 8*(d**2 + 6)*c2*c42*d**2 + 2*(d**2 + 6)*c4*c42*d**4 \
+                            -4*d*(d**2 - 4)*c41*c42*d**3
+        A /= (d-3)
+        A /= (d-2)
+        A /= (d-1)
+        A /= (d+1)
+        A /= (d+2)
+        A /= (d+3)
+
+        B = 2*d**2*(d**4 - 12*d**2 + 27) / ((d-3)*(d-2)*(d-1)*(d+1)*(d+2)*(d+3) )
+        A += B
+
+        return A
+                            
     else:
         raise ValueError('Unrecognized order !')
 
@@ -323,7 +380,7 @@ def plot_ratios(r, folder='./', show=True, save=False):
     x = np.linspace(0,1)
     xs, ys = ecdf(r)
     xs_avg = np.mean(xs, axis=0)
-    xs_err = np.std(xs, axis=0)
+    xs_I = error_interval(xs, axis=0)
 
     data_flat = {'r': r.flatten()}
     data = {'x': x,
@@ -370,7 +427,7 @@ def plot_ratios(r, folder='./', show=True, save=False):
     ax[0].set_ylim(ymin=0, ymax=2)
 
     ax[1].plot(xs_avg, ys, label='Model', color=colors['model'])
-    ax[1].fill_betweenx(ys, xs_avg-xs_err, xs_avg+xs_err, color=colors['model'], alpha=0.25)
+    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color=colors['model'], alpha=0.25)
     #sns.ecdfplot(data=data_single, x='r', color='black', alpha=0.25, label='Kicked rotor', ax=ax[1])
     sns.lineplot(data=data, x='x', y='cpoiss', label='Poisson', ax=ax[1], color=colors['poiss'])
     sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1], color=colors['goe'])
@@ -392,7 +449,7 @@ def plot_spacings(s, folder='./', show=True, save=False):
     x = np.linspace(0,5)
     xs, ys = ecdf(s)
     xs_avg = np.mean(xs, axis=0)
-    xs_err = np.std(xs, axis=0)
+    xs_I = error_interval(xs, axis=0)
 
     data_flat = {'s': s.flatten()}
     data = {'x': x,
@@ -437,7 +494,7 @@ def plot_spacings(s, folder='./', show=True, save=False):
     ax[0].set_ylim(ymin=0, ymax=1)
 
     ax[1].plot(xs_avg, ys, label='Model', color=colors['model'])
-    ax[1].fill_betweenx(ys, xs_avg-xs_err, xs_avg+xs_err, color=colors['model'], alpha=0.25)
+    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color=colors['model'], alpha=0.25)
     sns.lineplot(data=data, x='x', y='cpoiss', label='Poisson', ax=ax[1], color=colors['poiss'])
     sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1], color=colors['goe'])
     sns.lineplot(data=data, x='x', y='cgue', label='GUE', ax=ax[1], color=colors['gue'])
@@ -459,7 +516,7 @@ def plot_vector_coefficients(c, d, folder='./', show=True, save=False):
     x = np.linspace(-0.1,0.1)
     xs, ys = ecdf(c)
     xs_avg = np.mean(xs, axis=0)
-    xs_err = np.std(xs, axis=0)
+    xs_I = error_interval(xs, axis=0)
 
     data_flat = {'c': c.flatten().real}
     data = {'x': x,
@@ -491,7 +548,7 @@ def plot_vector_coefficients(c, d, folder='./', show=True, save=False):
 
     #sns.ecdfplot(data=data_single, x='r', color='black', alpha=0.25, label='Kicked rotor', ax=ax[1])
     ax[1].plot(xs_avg, ys, label='Kicked rotor', color='k')
-    ax[1].fill_betweenx(ys, xs_avg-xs_err, xs_avg+xs_err, color='k', alpha=0.25)
+    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color='k', alpha=0.25)
     #sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1])
     ax[1].set_xlabel(r'$c$')
     ax[1].set_ylabel(r'$F(c)$')
@@ -505,7 +562,7 @@ def plot_vector_coefficients(c, d, folder='./', show=True, save=False):
     sns.reset_orig()
     plt.close(fig)
 
-def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembles=1, folder='./', show=True, save=False):
+def plot_fractal_dimension(energies, dq, dq_avg, dq_I, q_arr, q=2, num_ensembles=1, folder='./', show=True, save=False):
     xmin = np.inf
     xmax = -np.inf
     for i in range(len(energies)):
@@ -525,18 +582,15 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembl
     dq = dq[0]
 
     y = np.mean(dq) * np.ones(shape=x.shape)
-    y_err = np.std(dq) * np.ones(shape=x.shape)
     y_goe = np.mean(dq_goe) * np.ones(shape=x.shape)
-    y_goe_err = np.std(dq_goe) * np.ones(shape=x.shape)
     y_gue = np.mean(dq_gue) * np.ones(shape=x.shape)
-    y_gue_err = np.std(dq_gue) * np.ones(shape=x.shape)
 
     dq_goe_avg = dq_avg[1]
     dq_gue_avg = dq_avg[2]
     dq_avg = dq_avg[0]
-    dq_goe_err = dq_err[1]
-    dq_gue_err = dq_err[2]
-    dq_err = dq_err[0]
+    dq_goe_I = dq_I[1]
+    dq_gue_I = dq_I[2]
+    dq_I = dq_I[0]
  
     sns.set_theme()
     sns.set_style("white")
@@ -548,13 +602,8 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembl
     sns.despine()
     
     ax[0].plot(x, y_goe, color=colors['goe'], label='GOE')
-    #ax[0].fill_between(x, y_goe-y_goe_err, y_goe+y_goe_err, alpha=0.25, color=colors['goe'])
-    
     ax[0].plot(x, y_gue, color=colors['gue'], label='GUE')
-    #ax[0].fill_between(x, y_gue-y_gue_err, y_gue+y_gue_err, alpha=0.25, color=colors['gue'])
-    
     ax[0].plot(x, y, color=colors['model'], label='Model')
-    #ax[0].fill_between(x, y-y_err, y+y_err, alpha=0.25, color=colors['model'])
 
     ymin = np.inf
     ymax = 0
@@ -581,11 +630,11 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembl
     ax[0].set_ylim(ymin=ymin-0.05, ymax=ymax+0.05)
 
     ax[1].plot(q_arr, dq_avg, 'o-', markersize=2, color=colors['model'], label='Model')
-    ax[1].fill_between(q_arr, dq_avg-dq_err, dq_avg+dq_err, alpha=0.1, color=colors['model'])
+    ax[1].fill_between(q_arr, dq_I[0], dq_I[1], alpha=0.1, color=colors['model'])
     ax[1].plot(q_arr, dq_goe_avg, 'o-', markersize=2, color=colors['goe'], label='GOE')
-    ax[1].fill_between(q_arr, dq_goe_avg-dq_goe_err, dq_goe_avg+dq_goe_err, alpha=0.25, color=colors['goe'])
+    ax[1].fill_between(q_arr, dq_goe_I[0], dq_goe_I[1], alpha=0.1, color=colors['goe'])
     ax[1].plot(q_arr, dq_gue_avg, 'o-', markersize=2, color=colors['gue'], label='GUE')
-    ax[1].fill_between(q_arr, dq_gue_avg-dq_gue_err, dq_gue_avg+dq_gue_err, alpha=0.25, color=colors['gue'])
+    ax[1].fill_between(q_arr, dq_gue_I[0], dq_gue_I[1], alpha=0.1, color=colors['gue'])
     ax[1].legend()
     ax[1].set_xlabel(r'$q$')
     ax[1].set_ylabel(f'$D_q$')
@@ -598,7 +647,12 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_err, q_arr, q=2, num_ensembl
     sns.reset_orig()
     plt.close(fig)
 
-def plot_fractal_dimension_state(time, dq_state_avg, dq_state_err, q_arr, q=2, folder='./', show=True, save=False):
+def plot_fractal_dimension_state(time, 
+                                dq_state_avg, 
+                                q_arr, 
+                                q=2, 
+                                dq_state_I=None, 
+                                folder='./', show=True, save=False):
     sns.set_theme()
     sns.set_style("white")
     sns.set_style("ticks")
@@ -610,11 +664,12 @@ def plot_fractal_dimension_state(time, dq_state_avg, dq_state_err, q_arr, q=2, f
 
     q_idx = np.where(np.abs(q_arr - q) < 1e-10)[0][0]
     ax[0].plot(time, dq_state_avg[:,q_idx], color=colors['model'], label='Model')
-    ax[0].fill_between(time, 
-                       dq_state_avg[:,q_idx]-dq_state_err[:,q_idx], 
-                       dq_state_avg[:,q_idx]+dq_state_err[:,q_idx], 
-                       alpha=0.1, 
-                       color=colors['model'])
+    if dq_state_I is not None:
+        ax[0].fill_between(time, 
+                           dq_state_I[0][:,q_idx], 
+                           dq_state_I[1][:,q_idx], 
+                           alpha=0.1, 
+                           color=colors['model'])
 
     #ax[0].legend()
     ax[0].set_xscale('log')
@@ -636,8 +691,12 @@ def plot_fractal_dimension_state(time, dq_state_avg, dq_state_err, q_arr, q=2, f
     sns.reset_orig()
     plt.close(fig)
 
-def plot_survival_probability(time, 
-    w_init_avg, w_ti_avg, w_init_err=None, w_ti_err=None, vmax=0.1, folder='./', show=True, save=False):
+def plot_survival_probability(time,
+                              w_init_avg,
+                              w_ti_avg,
+                              w_init_I=None,
+                              vmax=0.1,
+                              folder='./', show=True, save=False):
     sns.set_theme()
     sns.set_style("white")
     sns.set_style("ticks")
@@ -648,11 +707,12 @@ def plot_survival_probability(time,
     sns.despine()
     
     ax[0].plot(time, w_init_avg, color=colors['model'], label='Model')
-    ax[0].fill_between(time,
-                       w_init_avg-w_init_err, 
-                       w_init_avg+w_init_err, 
-                       alpha=0.1, 
-                       color=colors['model'])
+    if w_init_I is not None:
+        ax[0].fill_between(time,
+                           w_init_I[0],
+                           w_init_I[1],
+                           alpha=0.1, 
+                           color=colors['model'])
     ax[0].set_xscale('log')
     ax[0].set_xlim(xmin=time[0], xmax=time[-1])
     ax[0].set_ylim(ymin=0, ymax=1)
@@ -675,10 +735,8 @@ def plot_survival_probability(time,
     sns.reset_orig()
     plt.close(fig)
 
-def plot_spectral_functions(time, c2, c4, d, c2_err=None, c4_err=None, folder='./', show=True, save=False):
+def plot_spectral_functions(time, c2, c4, d, c2_I=None, c4_I=None, folder='./', show=True, save=False):
     data = {'time': time, 
-            'c2': c2,
-            'c4': c4,
             'asymptote2': (1/d)*np.ones(len(time)),
             'asymptote4': ((2*d-1)/d**3)*np.ones(len(time)),
             }
@@ -692,19 +750,19 @@ def plot_spectral_functions(time, c2, c4, d, c2_err=None, c4_err=None, folder='.
     fig.set_size_inches(3.386,6.25)
     sns.despine()
         
-    sns.lineplot(data=data, x='time', y='c2', ax=ax[0])
-    if c2_err is not None:
-        ax[0].fill_between(time, c2-c2_err, c2+c2_err, alpha=0.1, color='black')
     sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[0], color='black')
+    ax[0].plot(time, c2)
+    if c2_I is not None:
+        ax[0].fill_between(time, c2_I[0], c2_I[1], alpha=0.1, color='black')
     ax[0].set_xscale('log')
     ax[0].set_yscale('log')
     ax[0].set_xlabel(r'$t$')
     ax[0].set_ylabel(r'$ \tilde{c}_2(t) $')
         
-    sns.lineplot(data=data, x='time', y='c4', ax=ax[1])
-    if c4_err is not None:
-        ax[1].fill_between(time, c4-c4_err, c4+c4_err, alpha=0.1, color='black')
     sns.lineplot(data=data, x='time', y='asymptote4', ax=ax[1], color='black')
+    ax[1].plot(time, c4)
+    if c4_I is not None:
+        ax[1].fill_between(time, c4_I[0], c4_I[1], alpha=0.1, color='black')
     ax[1].set_xscale('log')
     ax[1].set_yscale('log')
     ax[1].set_xlabel(r'$t$')
@@ -717,13 +775,18 @@ def plot_spectral_functions(time, c2, c4, d, c2_err=None, c4_err=None, folder='.
     sns.reset_orig()
     plt.close(fig)
     
-def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=True, save=False):
+def plot_frame_potential(time, 
+                         F1,
+                         F2,
+                         F1_I,
+                         F2_I,
+                         time_est=None,
+                         F1_est=None,
+                         F2_est=None,
+                         window=0, 
+                         folder='./', show=True, save=False):
     
-    time, F1, F2 = F_analytic
-    if F_est is not None:
-        time_est, F1_est, F2_est = F_est
-
-    if window > 0 and F_est is not None:
+    if window > 0 and F1_est is not None:
         # Time-bin average sliding window:
         Nt = int(len(time_est) - window)
         F1_avg = np.empty(Nt)
@@ -736,20 +799,14 @@ def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=Tru
         F1_est = F1_avg
         F2_est = F2_avg
 
-    if F_est is not None:
-        data2 = {'time': time_est,
-                 'F1': F1_est,
-                 'F2': F2_est}
-
     data = {'time': time, 
-            'F1': F1,
-            'F2': F2,
             #'upperbound1': d**2*np.ones(len(time)), # d^(2k)
             #'upperbound2': d**4*np.ones(len(time)),
             'harr1': np.ones(len(time)),
             'harr2': 2*np.ones(len(time)),
             'asymptote1': 3*np.ones(len(time)),
-            'asymptote2': 10*np.ones(len(time)),
+            #'asymptote2': 10*np.ones(len(time)),
+            'asymptote2': 24*np.ones(len(time)),
             }
         
     sns.set_theme()
@@ -764,9 +821,11 @@ def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=Tru
     #sns.lineplot(data=data, x='time', y='upperbound1', ax=ax[0])
     sns.lineplot(data=data, x='time', y='harr1', ax=ax[0], color='black')
     sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0], color='black')
-    sns.lineplot(data=data, x='time', y='F1', ax=ax[0])
-    if F_est is not None:
-        sns.lineplot(data=data2, x='time', y='F1', ax=ax[0])
+    ax[0].plot(time, F1)
+    if F1_I is not None:
+        ax[0].fill_between(time, F1_I[0], F1_I[1], alpha=0.1, color='black')
+    if F1_est is not None:
+        ax[0].plot(time_est, F1_est)
     ax[0].set_xscale('log')
     ax[0].set_yscale('log')
     ax[0].set_xlabel(r'$t$')
@@ -775,9 +834,11 @@ def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=Tru
     #sns.lineplot(data=data, x='time', y='upperbound2', ax=ax[1])
     sns.lineplot(data=data, x='time', y='harr2', ax=ax[1], color='black')
     sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1], color='black')
-    sns.lineplot(data=data, x='time', y='F2', ax=ax[1])
-    if F_est is not None:
-        sns.lineplot(data=data2, x='time', y='F2', ax=ax[1])
+    ax[1].plot(time, F2)
+    if F2_I is not None:
+        ax[1].fill_between(time, F2_I[0], F2_I[1], alpha=0.1, color='black')
+    if F2_est is not None:
+        ax[1].plot(time_est, F2_est)
     ax[1].set_xscale('log')
     ax[1].set_yscale('log')
     ax[1].set_xlabel(r'$t$')
@@ -790,11 +851,9 @@ def plot_frame_potential(F_analytic, F_est=None, window=0, folder='./', show=Tru
     sns.reset_orig()
     plt.close(fig)
     
-def plot_loschmidt_echo(time, le1, le2, d, le1_err=None, le2_err=None, folder='./', show=True, save=False):
+def plot_loschmidt_echo(time, le1, le2, d, le1_I=None, le2_I=None, folder='./', show=True, save=False):
     # FIXME add non-isometric twirl operator version to compare
     data = {'time': time, 
-            'le1': le1,
-            'le2': le2,
             'asymptote2': (3/d**2)*np.ones(len(time)),
             'gue2': (1/d**2)*np.ones(len(time)),
             'asymptote1': (2/d)*np.ones(len(time)),
@@ -810,17 +869,21 @@ def plot_loschmidt_echo(time, le1, le2, d, le1_err=None, le2_err=None, folder='.
     fig.set_size_inches(3.386,6.25)
     sns.despine()
         
-    sns.lineplot(data=data, x='time', y='le1', ax=ax[0])
     sns.lineplot(data=data, x='time', y='gue1', ax=ax[0], color='black')
     sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0], color='black')
+    ax[0].plot(time, le1)
+    if le1_I is not None:
+        ax[0].fill_between(time, le1_I[0], le1_I[1], alpha=0.1, color='black')
     ax[0].set_xscale('log')
     ax[0].set_yscale('log')
     ax[0].set_xlabel(r'$t$')
     ax[0].set_ylabel(r'$\langle \mathcal{L}_1(t) \rangle_G$')
         
-    sns.lineplot(data=data, x='time', y='le2', ax=ax[1])
     sns.lineplot(data=data, x='time', y='gue2', ax=ax[1], color='black')
     sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1], color='black')
+    ax[1].plot(time, le2)
+    if le2_I is not None:
+        ax[1].fill_between(time, le2_I[0], le2_I[1], alpha=0.1, color='black')
     ax[1].set_xscale('log')
     ax[1].set_yscale('log')
     ax[1].set_xlabel(r'$t$')

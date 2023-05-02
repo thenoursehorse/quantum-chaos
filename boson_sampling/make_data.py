@@ -130,20 +130,19 @@ if __name__ == '__main__':
         bosons.plot_ratios(save=args.save_plots, show=args.show_plots)
         bosons.plot_spacings(save=args.save_plots, show=args.show_plots)
         bosons.plot_fractal_dimension(save=args.save_plots, show=args.show_plots)
-        bosons.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, estimate=False)
         bosons.plot_spectral_functions(save=args.save_plots, show=args.show_plots)
+        bosons.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, estimate=False)
         bosons.plot_loschmidt_echo(save=args.save_plots, show=args.show_plots)
         bosons.plot_fractal_dimension_state(save=args.save_plots, show=args.show_plots)
         bosons.plot_survival_probability(psi, save=args.save_plots, show=args.show_plots)
         end = time.time()
         print("Plotting took", end-start)
         
-    # Some averages
-    r_avg, r_err = bosons.average_level_ratios()
-    eta_ratios = bosons.eta_ratios()
-    p_pois, p_goe, p_gue = bosons.chi_distance()
-
     if args.save_data:
+        r_avg, r_err, r_I = bosons.average_level_ratios()
+        eta_ratios = bosons.eta_ratios()
+        p_pois, p_goe, p_gue = bosons.chi_distance()
+        
         filename = folder + "/data.h5"
         print(f"Saving data to '{filename}'")
         modeldata = GenericSystemData(filename=filename,
@@ -155,9 +154,3 @@ if __name__ == '__main__':
                                       p_gue=p_gue,
                                      )
         modeldata.save()
-
-        # TODO
-        # fix phi (Omega) to pi/4
-        # fix theta (J) to Kchi/(16phi)
-        # Now vary Kchi
-        # Now vary J.
