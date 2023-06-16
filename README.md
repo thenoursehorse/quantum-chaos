@@ -20,7 +20,7 @@ Installation
 
 1. Install from local (-e allows to develop code without reinstalling)
     ```
-    cd kicked-boson
+    cd quantum_chaos
     python3 -m pip install -e ./
     ```
 
