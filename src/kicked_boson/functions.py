@@ -5,7 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 #import pandas as pd
 
-from kicked_boson.plotter import Plotter
+from quantum_chaos.plotter import Plotter
 
 # COLORS
 colors = {'poiss': sns.color_palette()[0],

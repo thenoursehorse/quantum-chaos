@@ -3,7 +3,7 @@ import qutip as qt
 
 import matplotlib.pyplot as plt
 
-from kicked_boson.quantum.operators import *
+from quantum_chaos.quantum.operators import *
     
 def frame_potential_qobj(U_list, k_max=1):
     F = np.array([0 for _ in range(k_max)])

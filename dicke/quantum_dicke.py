@@ -5,7 +5,7 @@ import os
 import argparse
 import textwrap
 
-from kicked_boson.quantum.dicke import Dicke
+from quantum_chaos.quantum.dicke import Dicke
 
 if __name__ == '__main__':
     description = textwrap.dedent('''\

@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 
-from kicked_boson.quantum.system import GenericSystem
+from quantum_chaos.quantum.system import GenericSystem
 
 class Dicke(GenericSystem):
     def __init__(self, N=16,

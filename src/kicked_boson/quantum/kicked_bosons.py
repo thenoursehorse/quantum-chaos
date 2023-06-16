@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 
-from kicked_boson.quantum.system import GenericSystem
+from quantum_chaos.quantum.system import GenericSystem
 
 def phase_shift_unitary(N, phi_list, b_list):
     Op = 0

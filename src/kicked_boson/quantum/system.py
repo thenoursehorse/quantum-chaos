@@ -5,8 +5,8 @@ from copy import deepcopy
 
 import h5py
 
-from kicked_boson.quantum.operators import *
-from kicked_boson.functions import *
+from quantum_chaos.quantum.operators import *
+from quantum_chaos.functions import *
 
 class GenericSystemData(object):
     def __init__(self, filename, **kwargs):

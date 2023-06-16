@@ -1,6 +1,6 @@
-# kicked-boson
+# quantum_chaos
 
-Chaos measures for the kicked-rotor model of bosons. (And some other models.)
+Chaos measures for quantum models such as the kicked-rotor model of bosons.
 
 Installation
 ---------------
@@ -15,7 +15,7 @@ Installation
 
 1. Clone source
     ```
-    git clone https://github.com/thenoursehorse/kicked-boson
+    git clone https://github.com/thenoursehorse/quantum_chaos
     ```
 
 1. Install from local (-e allows to develop code without reinstalling)
@@ -27,7 +27,7 @@ Installation
 To uninstall
 
 ```
-python3 -m pip uninstall kicked-boson
+python3 -m pip uninstall quantum_chaos
 ```
 
 Dependencies

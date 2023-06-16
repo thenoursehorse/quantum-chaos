@@ -5,9 +5,9 @@ import os
 import argparse
 import textwrap
 
-from kicked_boson.quantum.pauli_3body import Pauli3Body
-from kicked_boson.quantum.system import GenericSystemData
-from kicked_boson.functions import golden_ratio
+from quantum_chaos.quantum.pauli_3body import Pauli3Body
+from quantum_chaos.quantum.system import GenericSystemData
+from quantum_chaos.functions import golden_ratio
 
 if __name__ == '__main__':
     description = textwrap.dedent('''\

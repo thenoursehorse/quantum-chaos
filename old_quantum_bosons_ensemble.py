@@ -9,7 +9,7 @@ import textwrap
 
 import qutip as qt
 
-from kicked_boson.quantum.ensemble import RandomBosonChainEnsemble, TimeBosonChainEnsemble, HaarEnsemble
+from quantum_chaos.quantum.ensemble import RandomBosonChainEnsemble, TimeBosonChainEnsemble, HaarEnsemble
 
 def linear_extrapolate_zero(x, y):
     def f(x, a, c):

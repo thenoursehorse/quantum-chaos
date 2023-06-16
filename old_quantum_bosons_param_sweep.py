@@ -13,8 +13,8 @@ import ray
 from ray.util.multiprocessing import Pool
 #from multiprocessing import Pool
 
-from kicked_boson.quantum.system import BosonChain
-from kicked_boson.functions import golden_ratio
+from quantum_chaos.quantum.system import BosonChain
+from quantum_chaos.functions import golden_ratio
 
 description = textwrap.dedent('''\
      Kicked bosons chain:
