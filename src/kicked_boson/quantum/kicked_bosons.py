@@ -1,10 +1,47 @@
 import numpy as np
 import scipy
 
-from kicked_boson.quantum.operators import *
 from kicked_boson.quantum.system import GenericSystem
 
-class BosonChain(GenericSystem):
+def phase_shift_unitary(N, phi_list, b_list):
+    Op = 0
+    for j in range(N):
+        Op += phi_list[j] * b_list[j].dag() * b_list[j]
+    Op *= -1j
+    return Op.expm()
+
+def hopping_unitary(N, theta_list, eta_list, b_list, periodic=False):
+    Op = 0
+    if periodic:
+        for j in range(N):
+            k = (j+1)%N
+            Op += theta_list[j] * np.exp(1j*eta_list[j]) * b_list[j].dag() * b_list[k]
+            Op += theta_list[j] * np.exp(-1j*eta_list[j]) * b_list[k].dag() * b_list[j]
+    else:
+        for j in range(N-1):
+            k = j+1
+            Op += theta_list[j] * np.exp(1j*eta_list[j]) * b_list[j].dag() * b_list[k]
+            Op += theta_list[j] * np.exp(-1j*eta_list[j]) * b_list[k].dag() * b_list[j]
+    Op *= -1j
+    return Op.expm()
+
+# parabolic potential
+def delta_wj(N, j, Omega=2, scale_N=True):
+    if scale_N:
+        return (4.0 * Omega / N**2) * (j - N/2.0)**2
+    else:
+        return 4.0 * Omega * (j - N/2.0)**2
+
+def delta_wj_fast(x, Omega=2, scale_N=True):
+    if scale_N:
+        N = len(x)
+        #return (4.0 * Omega / N) * x
+        return (4.0 * Omega / N**2) * x
+    else:
+        # NOTE omega = 0.01 = GSE statistics
+        return Omega * x
+
+class KickedBosons(GenericSystem):
     def __init__(self, N,
                        J=1,
                        Omega=1,
@@ -85,6 +122,12 @@ class BosonChain(GenericSystem):
             e, v = np.linalg.eig(U.todense())
         
         ev = -1 * np.angle( e )
+
+        # should quasienergies should only be defined up to multiples of the driving frequency omega = 2*pi*T^{-1}?
+        # If so restrict ev to lie within the interval [0,2pi]? Wait but np.angle already restricts it to [-pi,pi]
+        # so it is fine
+        #ev = ev % (2*np.pi*(1/self.T))
+
         ind = ev.argsort()
         return ev[ind], v[:,ind] 
     
@@ -93,6 +136,7 @@ class BosonChain(GenericSystem):
         Make bosonic annihilation operator and the number operator on each site
         restricted to the maximum number of excitations
         '''
+        from kicked_boson.quantum.operators import get_destroy_operators
         self._destroy_Op = get_destroy_operators(self._dims, self._excitations)
         self._num_Op = [self._destroy_Op[j].dag() * self._destroy_Op[j] for j in range(self._N)]
     
@@ -104,11 +148,12 @@ class BosonChain(GenericSystem):
         #theta_list = [self._J*T*np.pi for _ in range(self._N)]
         theta_list = self._J*T * np.ones(self._N)
         theta_list += self._theta_noise * rng.uniform(-np.pi, np.pi, self._N)
-
+        
         # Phases specifying trapping potential with noise
         #phi_list = np.asarray([delta_wj(self._N, j+1, self._Omega) * T for j in range(self._N)])
         phi_list = delta_wj_fast(np.arange(1, self._N+1), self._Omega)
         phi_list += self._phi_noise * rng.uniform(-np.pi, np.pi, self._N)
+        #phi_list += self._phi_noise * rng.normal(0, 1/(self._N), self._N)
 
         # Time reversal symmetry breaking on hopping
         #eta_list = [self._eta for _ in range(self._N)]
@@ -124,7 +169,8 @@ class BosonChain(GenericSystem):
 
             # Single particle sector only
             if self._remove_vac:
-                U = qt.Qobj(U[1:,1:], dims=U.dims)
+                from qutip import Qobj
+                U = Qobj(U[1:,1:], dims=U.dims)
 
         else:
             DiagBand = phi_list
@@ -155,3 +201,11 @@ class BosonChain(GenericSystem):
             U = scipy.sparse.linalg.expm(-1j*H2) @ scipy.sparse.linalg.expm(-1j*H1)
 
         return U 
+    
+    @property
+    def U(self):
+        return self._U
+    
+    @property
+    def H_eff(self):
+        return self._H_eff

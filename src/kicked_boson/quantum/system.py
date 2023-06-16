@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+#from uncertainties import unumpy
 from copy import deepcopy
 
 import h5py
@@ -133,30 +134,27 @@ class GenericSystem(object):
     def fractal_dimension_state(self, q):
         return fractal_dimension(q, self._w_ti_sqr, sum_axis=-1)
 
-    def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1, window=0, Nt_window=2, minimal=False):
+    def set_spectral_functions(self, Ti=0.1, Tf=1e4, Nt=1000, dT=0.1):
         #Nt = int(np.ceil((Tf - Ti + 1) / dT))
         #self._time = np.linspace(Ti, Tf, Nt, endpoint=True)
         self._time = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
+        
         self._c2 = np.empty([Nt, self._num_ensembles])
+        self._c41 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
+        self._c42 = np.empty([Nt, self._num_ensembles])
             
         for batch_size in range(10,0,-1):
             if self._num_ensembles % batch_size == 0:
                 break
         N_batch = int(self._num_ensembles / batch_size)
 
-        if window > 0:
-            print("WARNING: This kind of window averaging gives an incorrect too small t->inf limit for the frame potential !")
-        
         for m in range(N_batch):
-            if window > 0:
-                window_t = np.linspace(-window/2, window/2, Nt_window)
-                c2 = 0
-                for t in range(Nt_window):
-                    c2 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 2, t=self._time + t)
-                self._c2[:, m*batch_size:(m+1)*batch_size] = c2 / Nt_window
-            else:
-                self._c2[:, m*batch_size:(m+1)*batch_size] = \
-                    spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 2, t=self._time)
+            self._c2[:, m*batch_size:(m+1)*batch_size] = \
+                spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 2, t=self._time)
+            self._c41[:, m*batch_size:(m+1)*batch_size] = \
+                spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 41, t=self._time)
+            self._c42[:, m*batch_size:(m+1)*batch_size] = \
+                spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time)
 
         self._c4 = (self._c2 * self._d**2)**2 / self._d**4
 
@@ -165,40 +163,21 @@ class GenericSystem(object):
         
         self._c4_avg = np.mean(self._c4, axis=-1)
         self._c4_I = error_interval(self._c4, axis=-1)
-
-        if not minimal:
-            self._c41 = np.empty([Nt, self._num_ensembles], dtype=np.complex_)
-            self._c42 = np.empty([Nt, self._num_ensembles])
-            for m in range(N_batch):
-                if window > 0:
-                    window_t = np.linspace(-window/2, window/2, Nt_window)
-                    c41 = 0
-                    c42 = 0
-                    for t in range(Nt_window):
-                        c41 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 41, t=self._time + t)
-                        c42 += spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time + t)
-                    self._c41[:, m*batch_size:(m+1)*batch_size] = c41 / Nt_window
-                    self._c42[:, m*batch_size:(m+1)*batch_size] = c42 / Nt_window
-                else:
-                    self._c41[:, m*batch_size:(m+1)*batch_size] = \
-                        spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 41, t=self._time)
-                    self._c42[:, m*batch_size:(m+1)*batch_size] = \
-                        spectral_functions(self._eigenenergies[m*batch_size:(m+1)*batch_size], self._d, 42, t=self._time)
             
-            self._c41_avg = np.mean(self._c41, axis=-1)
-            self._c41_I = error_interval(self._c41, axis=-1),
-            self._c42_avg = np.mean(self._c42, axis=-1)
-            self._c42_I = error_interval(self._c42, axis=-1),
+        self._c41_avg = np.mean(self._c41, axis=-1)
+        self._c41_I = error_interval(self._c41, axis=-1),
+            
+        self._c42_avg = np.mean(self._c42, axis=-1)
+        self._c42_I = error_interval(self._c42, axis=-1),
 
-    def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=10, num_ensembles=2):
+    def set_unitary_evolve(self, Ti=0.1, Tf=1e4, Nt=1000, num_ensembles=2):
         if num_ensembles is None:
             num_ensembles = self._num_ensembles
         if num_ensembles > self._num_ensembles:
             num_ensembles = self._num_ensembles
  
         self._time2 = np.logspace(np.log10(Ti), np.log10(Tf), Nt, endpoint=True)
-        #self._time2 = np.array([1, 10, 100, 1000, 10000])
-        #self._time2 = np.linspace(0, 100, 100, endpoint=True)
+        #self._time2 = np.linspace(0, 100, 1000, endpoint=True)
 
         exp_e_diag = np.exp(-1j * self._time2[:, None, None] * self._eigenenergies[:num_ensembles])
         exp_e = np.zeros((len(self._time2), num_ensembles, self._d, self._d), dtype=np.complex_)
@@ -225,11 +204,15 @@ class GenericSystem(object):
         #                                           np.transpose(vecs.conj(), (0,2,1)), \
         #                                           optimize=True)
     
-    def set_unitary_fidelity(self):
+    def set_unitary_fidelity(self, num_ensembles=None):
         if not hasattr(self, '_Ut'):
             self.set_unitary_evolve()
+        if num_ensembles is None:
+            num_ensembles = self._Ut.shape[1]
+        if num_ensembles > self._num_ensembles:
+            num_ensembles = self._num_ensembles
+        
 
-        num_ensembles = self._Ut.shape[1]
 
         # Taken from the last appendix in 10.1007/JHEP11(2017)048
         # ignore coincident as they scale as 1/num_ensembles for the frame potential
@@ -239,28 +222,17 @@ class GenericSystem(object):
         for t in range(len(self._time2)):
             for i in range(num_ensembles):
                 for j in range(num_ensembles):
-                    if i != j: # Ignore coincident
-                        self._unitary_fidelity[t,i,j] = np.abs(np.trace( self._Ut[t,i,...] @ self._Ut[t,j,...].conj().T ))**2
+                    if i > j: # Ignore coincident and note that tr(M+) = tr(M)* since tr(M)=tr(M^T) and tr(M*)=tr(M)*
+                        #self._unitary_fidelity[t,i,j] = np.abs(np.trace( self._Ut[t,i,...].conj().T @ self._Ut[t,j,...] ))**2
+                        #self._unitary_fidelity[t,i,j] = np.abs( np.sum(self._Ut[t,i].conj().T * self._Ut[t,j].T) )**2
+                        self._unitary_fidelity[t,i,j] = np.abs( np.einsum('ij,ji->', self._Ut[t,i].conj().T, self._Ut[t,j]) )**2
+        
+        # Add to lower half
+        # X = np.triu(X)
+        # X + X.T - np.diag(np.diag(X))
+        # No diag part because the diagonal is zero anyway
+        self._unitary_fidelity = self._unitary_fidelity + np.transpose(self._unitary_fidelity, (0,2,1))
  
-        # This is not really faster than above, and scales worse for larger # of ensembles
-        #for i in range(num_ensembles):
-        #    for j in range(num_ensembles):
-        #        if i != j: # Ignore coincident
-        #            tmp = np.trace(Ut[:,i,...] @ np.transpose( Ut[:,j,...].conj(), (0,2,1)), axis1=1, axis2=2)
-        #            tmp *= tmp.conj()
-        #            self._unitary_fidelity[:,i,j] = tmp.real
-        
-        # How to ignore coincident here?
-        #self._unitary_fidelity = np.einsum('tmij,tnji->tmn', self._Ut, np.transpose(self._Ut.conj(), (0,1,3,2)), optimize=True)
-        
-        # Lower bound estimate for frame potential
-        # If use Nt=same as isospectral estimate, the frame potential will follow
-        # the same curve, but the minimum will go WAY below the Haar average!
-        #self._unitary_fidelity = np.zeros((len(self._time2), num_ensembles))
-        #for t in range(len(self._time2)):
-        #    for i in range(num_ensembles):
-        #            self._unitary_fidelity[t,i] = np.abs(np.trace( self._Ut[t,i] ))**4 / self._d**2
-    
     def set_fractal_dimension(self, num_ensembles=10, q_keep=2):
         if num_ensembles is None:
             num_ensembles = self._num_ensembles
@@ -335,11 +307,11 @@ class GenericSystem(object):
                 self._q_state_keep = q_state_keep
                 self._dq_state = dq_state
     
-    def frame_potential(self, k=1):
+    def frame_potential_haar(self, k=1):
         # NOTE read last paragraph in Sec. 4.3 on pg. 26 of 10.1007/JHEP11(2017)048. 
         # It basically says that the frame potential as calculated from the spectral
         # form factors is valid for any ensemble whose measure is
-        # unitarily invariant
+        # unitarily invariant (like isospectral ensemble)
 
         if not hasattr(self, '_c4'):
             self.set_spectral_functions()
@@ -350,30 +322,61 @@ class GenericSystem(object):
                 self.set_spectral_functions()
             if not hasattr(self, '_c42'):
                 self.set_spectral_functions()
-            #return frame_potential(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
-            return frame_potential(self._d, self._c2, self._c4, self._c41, self._c42, k=2)
-        else:
-            #return frame_potential(self._d, self._c2_avg, self._c4_avg)
-            return frame_potential(self._d, self._c2, self._c4)
+            
+            # This error propogation is wrong because the error is not normal, it is some assymetric skewed distribution
+            #c2 = unumpy.uarray(self._c2_avg, self._c2_I[1]-self._c2_avg) # assume std deviation
+            #c4 = unumpy.uarray(self._c4_avg, self._c4_I[1]-self._c4_avg)
+            #c41 = unumpy.uarray(self._c41_avg.real, self._c41_I[0][1].real-self._c41_avg.real)
+            #c42 = unumpy.uarray(self._c42_avg.real, self._c42_I[0][1].real-self._c42_avg.real)
+            #F = frame_potential_haar(self._d, c2, c4, c41, c42, k=2)
+            #F_avg = unumpy.nominal_values(F)
+            #F_std = unumpy.std_devs(F)
+            #F_I = np.array([F_avg-F_std, F_avg+F_std])
+            
+            F_avg = frame_potential_haar(self._d, self._c2_avg, self._c4_avg, self._c41_avg, self._c42_avg, k=2)
+            F_I = None
         
-    def frame_potential2(self):
+        else:
+            # This error propogation is wrong because the error is not normal, it is some assymetric skewed distribution
+            #c2 = unumpy.uarray(self._c2_avg, self._c2_I[1]-self._c2_avg)
+            #F = frame_potential_haar(self._d, c2)
+            #F_avg = unumpy.nominal_values(F)
+            #F_std = unumpy.std_devs(F)
+            #F_I = np.array([F_avg-F_std, F_avg+F_std])
+            
+            #F1_avg = frame_potential_haar(self._d, self._c2_avg)
+            #F1_lower = frame_potential_haar(self._d, self._c2_avg - self._c2_I[0])
+            #F1_upper = frame_potential_haar(self._d, self._c2_avg + self._c2_I[1])
+            #F1_I = np.array([F1_lower, F1_upper])
+            #return F1_avg, F1_I
+        
+            #F = frame_potential_haar(self._d, self._c2)
+            #F_avg = np.mean(F, axis=-1)
+            #F_I = error_interval(F, axis=-1)
+            
+            F_avg = frame_potential_haar(self._d, self._c2_avg)
+            F_I = None
+
+        return F_avg, F_I
+        
+    def frame_potential(self):
         if not hasattr(self, '_unitary_fidelity'):
             self.set_unitary_fidelity()
-        return frame_potential2(self._unitary_fidelity)
+        return frame_potential(self._unitary_fidelity)
     
-    def loschmidt_echo(self, kind='2nd'):
+    def loschmidt_echo_haar(self, kind='2nd'):
         if kind == '2nd':
             if not hasattr(self, '_c4'):
                 self.set_spectral_functions()
-            return loschmidt_echo(self._d, c4=self._c4, kind=kind)
+            return loschmidt_echo_haar(self._d, c4=self._c4, kind=kind)
         elif kind == '1st':
             if not hasattr(self, '_c2'):
                 self.set_spectral_functions()
-            return loschmidt_echo(self._d, c2=self._c2, kind=kind)
+            return loschmidt_echo_haar(self._d, c2=self._c2, kind=kind)
         else:
             raise ValueError('Unrecognized kind !')
     
-    def otoc(self, kind='4-point'):
+    def otoc_haar(self, kind='4-point'):
         # NOTE read Eq. 3.9 in 10.1007/JHEP11(2017)048
         # about how this Harr average is similar to just
         # measuring a few A operators (Pauli's)
@@ -388,11 +391,11 @@ class GenericSystem(object):
         if kind == '4-point':
             if not hasattr(self, '_c4_avg'):
                 self.set_spectral_functions()
-            return otoc(self._d, c4=self._c4_avg, kind=kind)
+            return otoc_haar(self._d, c4=self._c4_avg, kind=kind)
         elif kind == '2-point':
             if not hasattr(self, '_c2_avg'):
                 self.set_spectral_functions()
-            return otoc(self._d, c2=self._c2_avg, kind=kind)
+            return otoc_haar(self._d, c2=self._c2_avg, kind=kind)
         else:
             raise ValueError('Unreqognized kind !')
     
@@ -414,10 +417,10 @@ class GenericSystem(object):
 
     # FIXME plot Sigma^2, the variance in the number of eigenvalues, which shows the
     # long-range fluctuations. See Eq. 4 of doi:10.3390/e18100359 
-    def plot_ratios(self, show=True, save=False):
+    def plot_ratios(self, show=True, save=False, scale_width=1):
         # NOTE ratios and level spacings are short-range fluctuations
         r = self.level_ratios()
-        plot_ratios(r, folder=self._folder, show=show, save=save)
+        plot_ratios(r, folder=self._folder, show=show, save=save, scale_width=scale_width)
     
     def plot_vector_coefficients(self, show=True, save=False):
         c = np.abs(self._eigenvectors[0])
@@ -500,37 +503,33 @@ class GenericSystem(object):
                                 show=show, 
                                 save=save)
 
-    def plot_frame_potential(self, window=0, estimate=True, show=True, save=False):
-        F1 = self.frame_potential(k=1)
-        F2 = self.frame_potential(k=2)
-        F1_avg = np.mean(F1, axis=-1)
-        F1_I = error_interval(F1, axis=-1)
-        F2_avg = np.mean(F2, axis=-1)
-        F2_I = error_interval(F2, axis=-1)
+    def plot_frame_potential(self, window=0, non_haar=True, show=True, save=False, scale_width=1):
+        F1_haar_avg, F1_haar_I = self.frame_potential_haar(k=1)
+        F2_haar_avg, F2_haar_I = self.frame_potential_haar(k=2)
         
-        if estimate:
-            F1_est, F2_est = self.frame_potential2()
-            plot_frame_potential(self._time, \
-                                 F1_avg, \
-                                 F2_avg, \
-                                 F1_I, \
-                                 F2_I, \
-                                 self._time2, \
-                                 F1_est, \
-                                 F2_est, \
-                                 window=window, folder=self._folder, show=show, save=save)
+        if non_haar:
+            F1, F2 = self.frame_potential()
+            plot_frame_potential(time_haar=self._time, \
+                                 F1_haar=F1_haar_avg, \
+                                 F2_haar=F2_haar_avg, \
+                                 F1_haar_I=F1_haar_I, \
+                                 F2_haar_I=F2_haar_I, \
+                                 time=self._time2, \
+                                 F1=F1, \
+                                 F2=F2, \
+                                 window=window, folder=self._folder, show=show, save=save, scale_width=scale_width)
         else:
-            plot_frame_potential(self._time, \
-                                 F1_avg, \
-                                 F2_avg, \
-                                 F1_I, \
-                                 F2_I, \
-                                 folder=self._folder, show=show, save=save)
+            plot_frame_potential(time_haar=self._time, \
+                                 F1_haar=F1_haar_avg, \
+                                 F2_haar=F2_haar_avg, \
+                                 F1_haar_I=F1_haar_I, \
+                                 F2_haar_I=F2_haar_I, \
+                                 folder=self._folder, show=show, save=save, scale_width=scale_width)
     
     def plot_loschmidt_echo(self, show=True, save=False):
         # FIXME add non-isometric twirl operator version to compare
-        le1 = self.loschmidt_echo(kind='1st')
-        le2 = self.loschmidt_echo(kind='2nd')
+        le1 = self.loschmidt_echo_haar(kind='1st')
+        le2 = self.loschmidt_echo_haar(kind='2nd')
         le1_avg = np.mean(le1, axis=-1)
         le1_I = error_interval(le1, axis=-1)
         le2_avg = np.mean(le2, axis=-1)
@@ -554,10 +553,6 @@ class GenericSystem(object):
     @property
     def d(self):
         return self._d
-
-    @property
-    def U(self):
-        return self._U
     
     @property
     def eigenenergies(self):
@@ -565,8 +560,4 @@ class GenericSystem(object):
     
     @property
     def eigenvectors(self):
-        return self._eigenvectors
-    
-    @property
-    def H_eff(self):
-        return self._H_eff
+        return self._eigenvectors    

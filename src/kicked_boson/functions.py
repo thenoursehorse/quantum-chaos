@@ -5,6 +5,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 #import pandas as pd
 
+from kicked_boson.plotter import Plotter
+
 # COLORS
 colors = {'poiss': sns.color_palette()[0],
           'goe': sns.color_palette()[1],
@@ -75,11 +77,16 @@ def g_poiss(t):
 def g_gue(t):
     return (1j/8) * ( 4*t - np.exp(-np.pi*t**2/16) * (np.pi*t**2 - 8) * (scipy.special.erfi(np.sqrt(np.pi)*t/4) - 1) )
 
-def error_interval(A, axis=-1, num_samples=666, confidence=0.90, stat=np.mean, method='percentile'):
+def error_interval(A, axis=-1, num_samples=666, confidence=0.68, stat=np.mean, method='percentile'):
     '''
     Something
     '''
-    if method == 'percentile':
+    if method == 'normal':
+        A_avg = stat(A, axis=axis)
+        A_se = np.std(A, axis=axis)
+        return [A_avg-A_se, A_avg+A_se]
+    
+    elif method == 'percentile':
         return np.percentile(A,[100*(1-confidence)/2,100*(1-(1-confidence)/2)], axis=axis)
     
     elif method == 'bootstrap_empirical':
@@ -116,7 +123,6 @@ def integrated_dos(E, energies):
     return np.sum( np.heaviside(E - energies, 0.5) )
     
 def chi_distance(xs, kind='ratios'):
-
     if kind == 'ratios':
         respois = cdftest(xs, ratio_cpoiss)
         resgoe = cdftest(xs, ratio_cgoe)
@@ -130,7 +136,11 @@ def chi_distance(xs, kind='ratios'):
         
     return respois.pvalue, resgoe.pvalue, resgue.pvalue #, resgse.pvalue
 
-def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=False, show=True, save=False):
+def unfold_energies(energies, 
+                    polytype='chebyshev', 
+                    deg=48, 
+                    folder='./', 
+                    plot=False, show=True, save=False, scale_width=1):
     energies_unfolded = np.empty(shape=energies.shape)
     num_ensembles = energies.shape[0]
         
@@ -140,14 +150,13 @@ def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=Fa
             idos[m][n] = integrated_dos(E, energies[m])
                 
     if plot:
-        sns.set_theme()
-        sns.set_style("white")
-        sns.set_style("ticks")
-        sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-        sns.set_context("paper")
-        fig, ax = plt.subplots(2,1)
-        fig.set_size_inches(3.386,6.25)
-        sns.despine()
+        plot = Plotter(N_figs=2,
+                       save_root=folder, 
+                       save_filename='unfolded_energies.pdf', 
+                       show=show, save=save, scale_width=scale_width,
+                       use_tics=True)
+        fig = plot.fig
+        axis = plot.axis
             
     if polytype == 'chebyshev':
         polyfit = np.polynomial.Chebyshev.fit
@@ -177,25 +186,19 @@ def unfold_energies(energies, polytype='chebyshev', deg=48, folder='./', plot=Fa
                 
         if plot:
             if m == 0:
-                ax[0].plot(energies[m],idos[m], color='black', alpha=0.25, label='Data')
-                ax[0].plot(energies[m], p(energies[m]), color='red', alpha=0.25, label='Fit')
+                plot.line(x=energies[m], y=idos[m], label='Data', color='black', alpha=0.25, ax_idx=0)
+                plot.line(x=energies[m], y=p(energies[m]), label='Fit', color='red', alpha=0.25, ax_idx=0)
             else:
-                ax[0].plot(energies[m],idos[m], alpha=0.25, color='black')
-                ax[0].plot(energies[m], p(energies[m]), alpha=0.25, color='red')
-            ax[1].plot(x, idos_unfolded, alpha=0.25, color='black')
+                plot.line(x=energies[m], y=idos[m], color='black', alpha=0.25, ax_idx=0)
+                plot.line(x=energies[m], y=p(energies[m]), color='red', alpha=0.25, ax_idx=0)
+            plot.line(x=x, y=idos_unfolded, color='black', alpha=0.25, ax_idx=1)
         
     if plot:
-        ax[0].set_xlabel(r'$E_n$')
-        ax[0].set_ylabel(r'$N(E_n)$')
-        ax[0].legend()
-        ax[1].set_xlabel(r'$x_n$')
-        ax[1].set_ylabel(r'$N(x_n)$')
-        if save:
-            fig.savefig(f'{folder}/unfolded_energies.pdf', bbox_inches="tight")
-        if show:
-            plt.show()
-        sns.reset_orig()
-        plt.close(fig)
+        axis[0].set_xlabel(r'$E_n$')
+        axis[0].set_ylabel(r'$N(E_n)$')
+        axis[0].legend()
+        axis[1].set_xlabel(r'$x_n$')
+        axis[1].set_ylabel(r'$N(x_n)$')
     
     return energies_unfolded
     
@@ -275,12 +278,15 @@ def spectral_functions(e, d, order, t):
 
     return c
     
-def frame_potential(d, c2, c4, c41=None, c42=None, k=1):
+def frame_potential_haar(d, c2, c4=None, c41=None, c42=None, k=1):
     # NOTE from https://doi.org/10.1088/1742-5468/acb52d
     # A popular measure of information mixing is the k -design state that cannot be distinguished from
     # the Haar random state when considering averages of polynomials of degree not higher than k.
     if k == 1:
-        return (d**2 / (d**2 - 1)) * (d**2 * c4 - 2*c2 + 1)
+        c2 = c2*d**2
+        return (1 / (d**2-1)) * (c2**2 + d**2 - 2*c2) # unitary
+        #return (1/(d*(d+2)*(d-1))) * ((d+1)*c2**2 + 2*d**3 - 4*d*c2) # orthogonal
+        #return (1/(d*(d-2)*(d+1))) * ((d-1)*c2**2 + 2*d**3 - 4*d*c2) # symplectic
     elif k == 2:
         #c2 = c2*d**2 # NOTE c2 *= d**2 will modify c2 in system method, yikes
         #c4 = c4*d**4
@@ -316,19 +322,22 @@ def frame_potential(d, c2, c4, c41=None, c42=None, k=1):
     else:
         raise ValueError('Unrecognized order !')
 
-def frame_potential2(unitary_fidelity, num_ensembles=None):
+def frame_potential(unitary_fidelity, num_ensembles=None):
     if num_ensembles is None:
         num_ensembles = unitary_fidelity.shape[-1]
 
-    F1 = np.sum(unitary_fidelity, axis=(1,2)) / num_ensembles**2
-    F2 = np.sum(unitary_fidelity**2, axis=(1,2)) / num_ensembles**2
+    #p = 1 / num_ensembles**2
+    p = 1 / (num_ensembles*(num_ensembles-1))
+
+    F1 = np.sum(unitary_fidelity, axis=(1,2)) * p
+    F2 = np.sum(unitary_fidelity**2, axis=(1,2)) * p
 
     # For the lower bound estimate
     #F1 = np.mean(unitary_fidelity, axis=1)
     #F2 = np.mean(unitary_fidelity**2, axis=1)
     return F1, F2
 
-def loschmidt_echo(d, c2=None, c4=None, kind='2nd'):
+def loschmidt_echo_haar(d, c2=None, c4=None, kind='2nd'):
     # FIXME calculate explicitly for some operators
     if kind == '2nd':
         # NOTE only valid for averaging over Pauli operators
@@ -339,7 +348,7 @@ def loschmidt_echo(d, c2=None, c4=None, kind='2nd'):
     else:
         raise ValueError('Unrecognized kind !')
 
-def otoc(d, c2=None, c4=None, A=None, B=None, kind='4-point'):
+def otoc_haar(d, c2=None, c4=None, A=None, B=None, kind='4-point'):
     # FIXME calculate explicitly for some operators
     if kind == '4-point':
         # NOTE only valid for A and B non-overlapping Pauli operators on qubits
@@ -353,216 +362,124 @@ def otoc(d, c2=None, c4=None, A=None, B=None, kind='4-point'):
     else:
         raise ValueError('Unrecognized kind !')
     
-def plot_eigenenergies(energies, N, folder='./', show=True, save=False):
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots()
-    fig.set_size_inches(3.386,2.54)
-    sns.despine()
+def plot_eigenenergies(energies, 
+                       N, 
+                       folder='./', show=True, save=False, scale_width=1):
+    plot = Plotter(N_figs=1,
+                   save_root=folder, 
+                   save_filename='eigenenergies.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
 
     num_ensembles = energies.shape[0]
     
     for m in range(num_ensembles):
-        ax.plot(energies[m]/N, '.')
-    ax.set_xlabel(r'$n$')
-    ax.set_ylabel(r'$E_n$')
-    if save:
-        fig.savefig(f'{folder}/eigenenergies.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
+        axis[0].plot(energies[m]/N, '.')
+    axis[0].set_xlabel(r'$n$')
+    axis[0].set_ylabel(r'$E_n/N$')
 
-def plot_ratios(r, folder='./', show=True, save=False):
+def plot_ratios(r, 
+                folder='./', show=True, save=False, scale_width=1):
+    # Get empirical cdf from r
     x = np.linspace(0,1)
     xs, ys = ecdf(r)
     xs_avg = np.mean(xs, axis=0)
     xs_I = error_interval(xs, axis=0)
 
-    data_flat = {'r': r.flatten()}
-    data = {'x': x,
-            'poiss': ratio_poiss(x),
-            'goe': ratio_goe(x),
-            'gue': ratio_gue(x),
-            'gse': ratio_gse(x),
-            'cpoiss': ratio_cpoiss(x),
-            'cgoe': ratio_cgoe(x),
-            'cgue': ratio_cgue(x),
-            'cgse': ratio_cgse(x),
-            }
-                
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
-    sns.despine()
-    
-    sns.histplot(data=data_flat, 
-                 x='r',
-                 stat='density',
-                 bins='auto',
-                 alpha=0.25,
-                 label='Model',
-                 ax=ax[0],
-                 color=colors['model'])
-    #sns.kdeplot(data=data,
-    #            x='r',
-    #            label='Kicked rotor',
-    #            cut=0,
-    #            bw_adjust=2,
-    #            ax=ax[0])
-    sns.lineplot(data=data, x='x', y='poiss', label='Poisson', ax=ax[0], color=colors['poiss'])
-    sns.lineplot(data=data, x='x', y='goe', label='GOE', ax=ax[0], color=colors['goe'])
-    sns.lineplot(data=data, x='x', y='gue', label='GUE', ax=ax[0], color=colors['gue'])
-    sns.lineplot(data=data, x='x', y='gse', label='GSE', ax=ax[0], color=colors['gse'])
-    ax[0].set_xlabel(r'$r$')
-    ax[0].set_ylabel(r'$P(r)$')
-    ax[0].set_xlim(xmin=0, xmax=1)
-    ax[0].set_ylim(ymin=0, ymax=2)
+    # Known values 
+    poiss = ratio_poiss(x)
+    goe = ratio_goe(x)
+    gue = ratio_gue(x)
+    gse = ratio_gse(x)
+    cpoiss = ratio_cpoiss(x)
+    cgoe = ratio_cgoe(x)
+    cgue = ratio_cgue(x)
+    cgse = ratio_cgse(x)
+        
+    plot = Plotter(N_figs=2,
+                   save_root=folder, 
+                   save_filename='ratio.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
+                    
+    #sns.kdeplot(data=data, x='r', label='Kicked rotor', cut=0, bw_adjust=2, ax=ax[0])
+    plot.histplot(x=r, label='Model', color=colors['model'], ax_idx=0)
+    plot.line(x=x, y=poiss, label='Poisson', color=colors['poiss'], ax_idx=0)
+    plot.line(x=x, y=goe, label='GOE', color=colors['goe'], ax_idx=0)
+    plot.line(x=x, y=gue, label='GUE', color=colors['gue'], ax_idx=0)
+    plot.line(x=x, y=gse, label='GSE', color=colors['gse'], ax_idx=0)
+    axis[0].legend()
+    axis[0].set_xlabel(r'$r$')
+    axis[0].set_ylabel(r'$P(r)$')
+    axis[0].set_xlim(xmin=0, xmax=1)
+    axis[0].set_ylim(ymin=0, ymax=2)
 
-    ax[1].plot(xs_avg, ys, label='Model', color=colors['model'])
-    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color=colors['model'], alpha=0.25)
+    plot.line(x=xs_avg, y=ys, label='Model', color=colors['model'], ax_idx=1)
+    plot.fill_betweenx(y=ys, x_lower= xs_I[0], x_upper=xs_I[1], color=colors['model'], ax_idx=1)
     #sns.ecdfplot(data=data_single, x='r', color='black', alpha=0.25, label='Kicked rotor', ax=ax[1])
-    sns.lineplot(data=data, x='x', y='cpoiss', label='Poisson', ax=ax[1], color=colors['poiss'])
-    sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1], color=colors['goe'])
-    sns.lineplot(data=data, x='x', y='cgue', label='GUE', ax=ax[1], color=colors['gue'])
-    sns.lineplot(data=data, x='x', y='cgse', label='GSE', ax=ax[1], color=colors['gse'])
-    ax[1].set_xlabel(r'$r$')
-    ax[1].set_ylabel(r'$F(r)$')
-    ax[1].set_xlim(xmin=0, xmax=1)
-    ax[1].set_ylim(ymin=0, ymax=1)
+    plot.line(x=x, y=cpoiss, label='Poisson', color=colors['poiss'], ax_idx=1)
+    plot.line(x=x, y=cgoe, label='GOE', color=colors['goe'], ax_idx=1)
+    plot.line(x=x, y=cgue, label='GUE', color=colors['gue'], ax_idx=1)
+    plot.line(x=x, y=cgse, label='GSE', color=colors['gse'], ax_idx=1)
+    axis[1].legend()
+    axis[1].set_xlabel(r'$r$')
+    axis[1].set_ylabel(r'$F(r)$')
+    axis[1].set_xlim(xmin=0, xmax=1)
+    axis[1].set_ylim(ymin=0, ymax=1)
 
-    if save:
-        fig.savefig(f'{folder}/ratio.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-
-def plot_spacings(s, folder='./', show=True, save=False):
+def plot_spacings(s, 
+                  folder='./', show=True, save=False, scale_width=1):
     x = np.linspace(0,5)
     xs, ys = ecdf(s)
     xs_avg = np.mean(xs, axis=0)
     xs_I = error_interval(xs, axis=0)
 
-    data_flat = {'s': s.flatten()}
-    data = {'x': x,
-            'poiss': spacing_poiss(x),
-            'goe': spacing_goe(x),
-            'gue': spacing_gue(x),
-            'cpoiss': spacing_cpoiss(x),
-            'cgoe': spacing_cgoe(x),
-            'cgue': spacing_cgue(x),
-            }
+    poiss = spacing_poiss(x)
+    goe = spacing_goe(x)
+    gue = spacing_gue(x)
+    cpoiss = spacing_cpoiss(x)
+    cgoe = spacing_cgoe(x)
+    cgue = spacing_cgue(x)
                 
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
-    sns.despine()
+    plot = Plotter(N_figs=2,
+                   save_root=folder, 
+                   save_filename='spacing.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
     
-    sns.histplot(data=data_flat, 
-                 x='s',
-                 stat='density',
-                 bins='auto',
-                 alpha=0.25,
-                 label='Model',
-                 ax=ax[0],
-                 color=colors['model'])
-    #sns.kdeplot(data=data,
-    #            x='r',
-    #            label='Kicked rotor',
-    #            cut=0,
-    #            bw_adjust=2,
-    #            ax=ax[0])
-    sns.lineplot(data=data, x='x', y='poiss', label='Poisson', ax=ax[0], color=colors['poiss'])
-    sns.lineplot(data=data, x='x', y='goe', label='GOE', ax=ax[0], color=colors['goe'])
-    sns.lineplot(data=data, x='x', y='gue', label='GUE', ax=ax[0], color=colors['gue'])
-    #sns.lineplot(data=data, x='x', y='gse', label='GSE', ax=ax[0], color=colors['gse'])
-    ax[0].set_xlabel(r'$s$')
-    ax[0].set_ylabel(r'$P(s)$')
-    ax[0].set_xlim(xmin=0, xmax=5)
-    ax[0].set_ylim(ymin=0, ymax=1)
-
-    ax[1].plot(xs_avg, ys, label='Model', color=colors['model'])
-    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color=colors['model'], alpha=0.25)
-    sns.lineplot(data=data, x='x', y='cpoiss', label='Poisson', ax=ax[1], color=colors['poiss'])
-    sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1], color=colors['goe'])
-    sns.lineplot(data=data, x='x', y='cgue', label='GUE', ax=ax[1], color=colors['gue'])
-    #sns.lineplot(data=data, x='x', y='cgse', label='GSE', ax=ax[1], color=colors['gse'])
-    ax[1].set_xlabel(r'$s$')
-    ax[1].set_ylabel(r'$F(s)$')
-    ax[1].set_xlim(xmin=0, xmax=5)
-    ax[1].set_ylim(ymin=0, ymax=1)
-
-    if save:
-        fig.savefig(f'{folder}/spacing.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-
-def plot_vector_coefficients(c, d, folder='./', show=True, save=False):
-    # FIXME this doesn't really work, I use fractal dimension instead
-    x = np.linspace(-0.1,0.1)
-    xs, ys = ecdf(c)
-    xs_avg = np.mean(xs, axis=0)
-    xs_I = error_interval(xs, axis=0)
-
-    data_flat = {'c': c.flatten().real}
-    data = {'x': x,
-            'goe': vectors_goe(x, d),
-            }
-
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
-    sns.despine()
+    plot.histplot(x=s.flatten(), label='Model', color=colors['model'], ax_idx=0)
+    plot.line(x=x, y=poiss, label='Poisson', color=colors['poiss'], ax_idx=0)
+    plot.line(x=x, y=goe, label='GOE', color=colors['goe'], ax_idx=0)
+    plot.line(x=x, y=gue, label='GUE', color=colors['gue'], ax_idx=0)
+    axis[0].set_xlabel(r'$s$')
+    axis[0].set_ylabel(r'$P(s)$')
+    axis[0].set_xlim(xmin=0, xmax=5)
+    axis[0].set_ylim(ymin=0, ymax=1)
     
-    sns.histplot(data=data_flat, 
-                 x='c',
-                 stat='density',
-                 bins='auto',
-                 color='black',
-                 alpha=0.25,
-                 label='Kicked rotor',
-                 ax=ax[0])
-    sns.lineplot(data=data, x='x', y='goe', label='GOE', ax=ax[0])
-    ax[0].set_xlabel(r'$c$')
-    ax[0].set_ylabel(r'$P(c)$')
-    #ax[0].set_xlim(xmin=0, xmax=1)
-    #ax[0].set_ylim(ymin=0, ymax=2)
+    plot.line(x=xs_avg, y=ys, label='Model', color=colors['model'], ax_idx=1)
+    plot.fill_betweenx(y=ys, x_lower= xs_I[0], x_upper=xs_I[1], color=colors['model'], ax_idx=1)
+    plot.line(x=x, y=cpoiss, label='Poisson', color=colors['poiss'], ax_idx=1)
+    plot.line(x=x, y=cgoe, label='GOE', color=colors['goe'], ax_idx=1)
+    plot.line(x=x, y=cgue, label='GUE', color=colors['gue'], ax_idx=1)
+    axis[1].set_xlabel(r'$s$')
+    axis[1].set_ylabel(r'$F(s)$')
+    axis[1].set_xlim(xmin=0, xmax=5)
+    axis[1].set_ylim(ymin=0, ymax=1)
 
-    #sns.ecdfplot(data=data_single, x='r', color='black', alpha=0.25, label='Kicked rotor', ax=ax[1])
-    ax[1].plot(xs_avg, ys, label='Kicked rotor', color='k')
-    ax[1].fill_betweenx(ys, xs_I[0], xs_I[1], color='k', alpha=0.25)
-    #sns.lineplot(data=data, x='x', y='cgoe', label='GOE', ax=ax[1])
-    ax[1].set_xlabel(r'$c$')
-    ax[1].set_ylabel(r'$F(c)$')
-    #ax[1].set_xlim(xmin=0, xmax=1)
-    #ax[1].set_ylim(ymin=0, ymax=1)
-
-    if save:
-        fig.savefig(f'{folder}/vectors.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-
-def plot_fractal_dimension(energies, dq, dq_avg, dq_I, q_arr, q=2, num_ensembles=1, folder='./', show=True, save=False):
+def plot_fractal_dimension(energies, 
+                           dq, 
+                           dq_avg, 
+                           dq_I, 
+                           q_arr, 
+                           q=2, 
+                           num_ensembles=1, 
+                           folder='./', show=True, save=False, scale_width=1):
     xmin = np.inf
     xmax = -np.inf
     for i in range(len(energies)):
@@ -591,26 +508,25 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_I, q_arr, q=2, num_ensembles
     dq_goe_I = dq_I[1]
     dq_gue_I = dq_I[2]
     dq_I = dq_I[0]
- 
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,2*2.54)
-    sns.despine()
     
-    ax[0].plot(x, y_goe, color=colors['goe'], label='GOE')
-    ax[0].plot(x, y_gue, color=colors['gue'], label='GUE')
-    ax[0].plot(x, y, color=colors['model'], label='Model')
-
+    plot = Plotter(N_figs=2,
+                   save_root=folder, 
+                   save_filename=f'fractal_dimension_q{q}.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
+        
+    plot.line(x=x, y=y_goe, label='GOE', color=colors['goe'], ax_idx=0)
+    plot.line(x=x, y=y_gue, label='GUE', color=colors['gue'], ax_idx=0)
+    plot.line(x=x, y=y, label='Model', color=colors['model'], ax_idx=0)
+    
     ymin = np.inf
     ymax = 0
     for m in range(num_ensembles):
-        ax[0].scatter(x=energies_goe[m], y=dq_goe[m], s=5, color=colors['goe'], alpha=0.25)
-        ax[0].scatter(x=energies_gue[m], y=dq_gue[m], s=5, color=colors['gue'], alpha=0.25)
-        ax[0].scatter(x=energies[m], y=dq[m], s=5, color=colors['model'], alpha=0.25)
+        plot.scatter(x=energies_goe[m], y=dq_goe[m], color=colors['goe'], ax_idx=0)
+        plot.scatter(x=energies_gue[m], y=dq_gue[m], color=colors['gue'], ax_idx=0)
+        plot.scatter(x=energies[m], y=dq[m], color=colors['model'], ax_idx=0)
 
         ymin_est = min(np.min(dq_goe[m]), np.min(dq_gue[m]), np.min(dq[m]))
         if ymin_est < ymin:
@@ -618,280 +534,223 @@ def plot_fractal_dimension(energies, dq, dq_avg, dq_I, q_arr, q=2, num_ensembles
         ymax_est = max(np.max(dq_goe[m]), np.max(dq_gue[m]), np.max(dq[m]))
         if ymax_est > ymax:
             ymax = ymax_est
-        
-    ax[0].legend()
-    ax[0].set_xlabel(r'$E_n/N$')
-    ax[0].set_ylabel(f'$D_{q}$')
-    ax[0].set_xlim(xmin=x[0], xmax=x[-1])
+ 
+    axis[0].legend()
+    axis[0].set_xlabel(r'$E_n/N$')
+    axis[0].set_ylabel(f'$D_{q}$')
+    axis[0].set_xlim(xmin=x[0], xmax=x[-1])
     if ymin < 0.05:
         ymin = 0.05
     if ymax > 0.95:
         ymax=0.95
-    ax[0].set_ylim(ymin=ymin-0.05, ymax=ymax+0.05)
+    axis[0].set_ylim(ymin=ymin-0.05, ymax=ymax+0.05)
 
-    ax[1].plot(q_arr, dq_avg, 'o-', markersize=2, color=colors['model'], label='Model')
-    ax[1].fill_between(q_arr, dq_I[0], dq_I[1], alpha=0.1, color=colors['model'])
-    ax[1].plot(q_arr, dq_goe_avg, 'o-', markersize=2, color=colors['goe'], label='GOE')
-    ax[1].fill_between(q_arr, dq_goe_I[0], dq_goe_I[1], alpha=0.1, color=colors['goe'])
-    ax[1].plot(q_arr, dq_gue_avg, 'o-', markersize=2, color=colors['gue'], label='GUE')
-    ax[1].fill_between(q_arr, dq_gue_I[0], dq_gue_I[1], alpha=0.1, color=colors['gue'])
-    ax[1].legend()
-    ax[1].set_xlabel(r'$q$')
-    ax[1].set_ylabel(f'$D_q$')
-    ax[1].set_xlim(xmin=0, xmax=q_arr[-1])
-
-    if save:
-        fig.savefig(f'{folder}/fractal_dimension_q{q}.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
+    plot.linepoints(x=q_arr, y=dq_avg, label='Model', color=colors['model'], ax_idx=1)
+    plot.fill_betweeny(x=q_arr, y_lower=dq_I[0], y_upper=dq_I[1], color=colors['model'], ax_idx=1)
+    plot.linepoints(x=q_arr, y=dq_goe_avg, label='GOE', color=colors['goe'], ax_idx=1)
+    plot.fill_betweeny(x=q_arr, y_lower=dq_goe_I[0], y_upper=dq_goe_I[1], color=colors['goe'], ax_idx=1)
+    plot.linepoints(x=q_arr, y=dq_gue_avg, label='GUE', color=colors['gue'], ax_idx=1)
+    plot.fill_betweeny(x=q_arr, y_lower=dq_gue_I[0], y_upper=dq_gue_I[1], color=colors['gue'], ax_idx=1)
+    axis[1].legend()
+    axis[1].set_xlabel(r'$q$')
+    axis[1].set_ylabel(f'$D_q$')
+    axis[1].set_xlim(xmin=0, xmax=q_arr[-1])
 
 def plot_fractal_dimension_state(time, 
-                                dq_state_avg, 
-                                q_arr, 
-                                q=2, 
-                                dq_state_I=None, 
-                                folder='./', show=True, save=False):
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,6.25)
-    sns.despine()
-
+                                 dq_state_avg, 
+                                 q_arr, 
+                                 q=2, 
+                                 dq_state_I=None, 
+                                 folder='./', show=True, save=False, scale_width=1):
+    plot = Plotter(N_figs=2,
+                   save_root=folder, 
+                   save_filename=f'fractal_dimension_state_q{q}.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
+    plot.set_log(axis='x')
+        
     q_idx = np.where(np.abs(q_arr - q) < 1e-10)[0][0]
-    ax[0].plot(time, dq_state_avg[:,q_idx], color=colors['model'], label='Model')
+    plot.line(x=time, y=dq_state_avg[:,q_idx], label='Model', color=colors['model'], ax_idx=0)
     if dq_state_I is not None:
-        ax[0].fill_between(time, 
-                           dq_state_I[0][:,q_idx], 
-                           dq_state_I[1][:,q_idx], 
-                           alpha=0.1, 
-                           color=colors['model'])
-
+        plot.fill_betweeny(x=time, y_lower=dq_state_I[0][:,q_idx], y_upper=dq_state_I[1][:,q_idx], color=colors['model'], ax_idx=0)
     #ax[0].legend()
-    ax[0].set_xscale('log')
-    ax[0].set_xlabel(r'$t$')
-    ax[0].set_ylabel(f'$D_{q}(\psi)$')
-    ax[0].set_xlim(xmin=time[0], xmax=time[-1])
-    ax[0].set_ylim(ymin=0, ymax=1)
+    axis[0].set_xlabel(r'$t$')
+    axis[0].set_ylabel(f'$D_{q}(\psi)$')
+    axis[0].set_xlim(xmin=time[0], xmax=time[-1])
+    axis[0].set_ylim(ymin=0, ymax=1)
 
-    c = ax[1].pcolormesh(time, q_arr, dq_state_avg.T, vmin=0, vmax=1, shading='auto')
-    ax[1].set_xscale('log')
-    ax[1].set_xlabel(r'$t$')
-    ax[1].set_ylabel(f'$q$')
+    c = plot.colormesh(x=time, y=q_arr, z=dq_state_avg, vmin=0, vmax=1, ax_idx=1)
+    axis[1].set_xlabel(r'$t$')
+    axis[1].set_ylabel(f'$q$')
     #fig.colorbar(c, orientation='horizontal', ax=ax[1])
     
-    if save:
-        fig.savefig(f'{folder}/fractal_dimension_state_q{q}.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-
 def plot_survival_probability(time,
                               w_init_avg,
                               w_ti_avg,
                               w_init_I=None,
                               vmax=0.1,
-                              folder='./', show=True, save=False):
-    sns.set_theme()
-    sns.set_style("white")
-    sns.set_style("ticks")
-    sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,6.25)
-    sns.despine()
+                              folder='./', show=True, save=False, scale_width=1):
+    plot = Plotter(N_figs=2,
+                   save_root=folder, 
+                   save_filename=f'fractal_survival_probability.pdf', 
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=True)
+    fig = plot.fig
+    axis = plot.axis
+    plot.set_log(axis='x')
     
-    ax[0].plot(time, w_init_avg, color=colors['model'], label='Model')
+    plot.line(x=time, y=w_init_avg, label='Model', color=colors['model'], ax_idx=0)
     if w_init_I is not None:
-        ax[0].fill_between(time,
-                           w_init_I[0],
-                           w_init_I[1],
-                           alpha=0.1, 
-                           color=colors['model'])
-    ax[0].set_xscale('log')
-    ax[0].set_xlim(xmin=time[0], xmax=time[-1])
-    ax[0].set_ylim(ymin=0, ymax=1)
-    ax[0].set_xlabel(r'$t$')
-    ax[0].set_ylabel(f'$W(t)$')
+        plot.fill_betweeny(x=time, y_lower=w_init_I[0], y_upper=w_init_I[1], color=colors['model'], ax_idx=0)
+    axis[0].set_xlim(xmin=time[0], xmax=time[-1])
+    axis[0].set_ylim(ymin=0, ymax=1)
+    axis[0].set_xlabel(r'$t$')
+    axis[0].set_ylabel(f'$W(t)$')
     
     d = w_ti_avg.shape[-1]
     i_arr = np.arange(1, d+0.1)
-    c = ax[1].pcolormesh(time, i_arr, w_ti_avg.T, vmin=0, vmax=vmax, shading='auto')
-    ax[1].set_xscale('log')
-    ax[1].set_xlim(xmin=time[0], xmax=time[-1])
-    ax[1].set_ylim(ymin=i_arr[0], ymax=i_arr[-1])
-    ax[1].set_xlabel(r'$t$')
-    ax[1].set_ylabel(f'$i$')
+    c = plot.colormesh(x=time, y=i_arr, z=w_ti_avg, vmin=0, vmax=vmax, ax_idx=1)
+    axis[1].set_xlim(xmin=time[0], xmax=time[-1])
+    axis[1].set_ylim(ymin=i_arr[0], ymax=i_arr[-1])
+    axis[1].set_xlabel(r'$t$')
+    axis[1].set_ylabel(f'$i$')
 
-    if save:
-        fig.savefig(f'{folder}/fractal_survival_probability.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-
-def plot_spectral_functions(time, c2, c4, d, c2_I=None, c4_I=None, folder='./', show=True, save=False):
-    data = {'time': time, 
-            'asymptote2': (1/d)*np.ones(len(time)),
-            'asymptote4': ((2*d-1)/d**3)*np.ones(len(time)),
-            }
+def plot_spectral_functions(time, 
+                            c2, 
+                            c4, 
+                            d, 
+                            c2_I=None, 
+                            c4_I=None, 
+                            folder='./', show=True, save=False, scale_width=1):
+    asymptote2 = (1/d)*np.ones(len(time))
+    asymptote4 = ((2*d-1)/d**3)*np.ones(len(time))
         
-    sns.set_theme()
-    sns.set_style("white")
-    #sns.set_style("ticks")
-    #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,6.25)
-    sns.despine()
-        
-    sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[0], color='black')
-    ax[0].plot(time, c2)
+    plot = Plotter(N_figs=2, 
+                   save_root=folder, 
+                   save_filename='spectral_functions.pdf', 
+                   show=show, save=save, scale_width=scale_width)
+    fig = plot.fig 
+    axis = plot.axis
+    plot.set_loglog()
+    
+    plot.line(x=time, y=asymptote2, color='black', ax_idx=0)
+    plot.line(x=time, y=c2, ax_idx=0)
     if c2_I is not None:
-        ax[0].fill_between(time, c2_I[0], c2_I[1], alpha=0.1, color='black')
-    ax[0].set_xscale('log')
-    ax[0].set_yscale('log')
-    ax[0].set_xlabel(r'$t$')
-    ax[0].set_ylabel(r'$ \tilde{c}_2(t) $')
-        
-    sns.lineplot(data=data, x='time', y='asymptote4', ax=ax[1], color='black')
-    ax[1].plot(time, c4)
+        plot.fill_betweeny(x=time, y_lower=c2_I[0], y_upper=c2_I[1], ax_idx=0)
+    axis[0].set_xlabel(r'$t$')
+    axis[0].set_ylabel(r'$ \tilde{\mathcal{R}}_2(t) / d^2$')
+    
+    plot.line(x=time, y=asymptote4, color='black', ax_idx=1)
+    plot.line(x=time, y=c4, ax_idx=1)
     if c4_I is not None:
-        ax[1].fill_between(time, c4_I[0], c4_I[1], alpha=0.1, color='black')
-    ax[1].set_xscale('log')
-    ax[1].set_yscale('log')
-    ax[1].set_xlabel(r'$t$')
-    ax[1].set_ylabel(r'$ \tilde{c}_4(t) $')
+        plot.fill_betweeny(x=time, y_lower=c4_I[0], y_upper=c4_I[1], ax_idx=1)
+    axis[1].set_xlabel(r'$t$')
+    axis[1].set_ylabel(r'$ \tilde{\mathcal{R}}_4(t) / d^4$')
         
-    if save:
-        fig.savefig(f'{folder}/spectral_functions.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-    
-def plot_frame_potential(time, 
-                         F1,
-                         F2,
-                         F1_I,
-                         F2_I,
-                         time_est=None,
-                         F1_est=None,
-                         F2_est=None,
+def plot_frame_potential(time_haar, 
+                         F1_haar,
+                         F2_haar=None,
+                         F1_haar_I=None,
+                         F2_haar_I=None,
+                         time=None,
+                         F1=None,
+                         F2=None,
                          window=0, 
-                         folder='./', show=True, save=False):
+                         folder='./', show=True, save=False, scale_width=1):
     
-    if window > 0 and F1_est is not None:
-        # Time-bin average sliding window:
-        Nt = int(len(time_est) - window)
-        F1_avg = np.empty(Nt)
-        F2_avg = np.empty(Nt)
-        for t in range(Nt):
-            F1_avg[t] = np.mean(F1_est[t:t+window])
-            F2_avg[t] = np.mean(F2_est[t:t+window])
+    #if window > 0 and F1_est is not None:
+    #    # Time-bin average sliding window:
+    #    Nt = int(len(time_est) - window)
+    #    F1_avg = np.empty(Nt)
+    #    F2_avg = np.empty(Nt)
+    #    for t in range(Nt):
+    #        F1_avg[t] = np.mean(F1_est[t:t+window])
+    #        F2_avg[t] = np.mean(F2_est[t:t+window])
+    #
+    #    time_est = time_est[:Nt]
+    #    F1_est = F1_avg
+    #    F2_est = F2_avg
 
-        time_est = time_est[:Nt]
-        F1_est = F1_avg
-        F2_est = F2_avg
+    # Known values
+    haar1 = np.ones(len(time_haar))
+    haar2 = 2*np.ones(len(time_haar))
+    asymptote1 = 2*np.ones(len(time_haar))
+    asymptote2 = 10*np.ones(len(time_haar))
 
-    data = {'time': time, 
-            #'upperbound1': d**2*np.ones(len(time)), # d^(2k)
-            #'upperbound2': d**4*np.ones(len(time)),
-            'harr1': np.ones(len(time)),
-            'harr2': 2*np.ones(len(time)),
-            'asymptote1': 3*np.ones(len(time)),
-            #'asymptote2': 10*np.ones(len(time)),
-            'asymptote2': 24*np.ones(len(time)),
-            }
+    if F1 is not None:
+        N_figs = 3
+    else:
+        N_figs = 2
+    plot = Plotter(N_figs=3, 
+                   save_root=folder, 
+                   save_filename='frame_potential.pdf', 
+                   show=show, save=save, scale_width=scale_width)
+    fig = plot.fig 
+    axis = plot.axis
+    plot.set_loglog()
+    
+    plot.line(x=time_haar, y=haar1, color='black', ax_idx=0)
+    plot.line(x=time_haar, y=asymptote1, color='black', ax_idx=0)
+    plot.line(x=time_haar, y=F1_haar, label=r'$\tilde{\mathcal{E}}_t$', ax_idx=0)
+    if F1_haar_I is not None:
+        plot.fill_betweeny(x=time_haar, y_lower=F1_haar_I[0], y_upper=F1_haar_I[1], ax_idx=0)
+    if F1 is not None:
+        plot.line(x=time, y=F1, label=r'$\mathcal{E}_t$', ax_idx=0)
+        axis[0].legend()
+    axis[0].set_xlabel(r'$t$')
+    axis[0].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_t}^{(1)} $')
+    
+    plot.line(x=time_haar, y=haar2, color='black', ax_idx=1)
+    plot.line(x=time_haar, y=asymptote2, color='black', ax_idx=1)
+    plot.line(x=time_haar, y=F2_haar, label=r'$\tilde{\mathcal{E}}_t$', ax_idx=1)
+    if F2_haar_I is not None:
+        plot.fill_betweeny(x=time_haar, y_lower=F2_haar_I[0], y_upper=F2_haar_I[1], ax_idx=1)
+    if F2 is not None:
+        plot.line(x=time, y=F2, label=r'$\mathcal{E}_t$', ax_idx=1)
+    axis[1].set_xlabel(r'$t$')
+    axis[1].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_t}^{(2)} $')
+    
+    if F1 is not None:
+        plot.line(x=time_haar, y=np.abs(F1 - F1_haar), ax_idx=2)
+        axis[2].set_xlabel(r'$t$')
+        axis[2].set_ylabel(r'$ \left| \mathcal{F}_{\mathcal{E}_t}^{(1)} - \mathcal{F}_{\tilde{\mathcal{E}}_t}^{(1)} \right|$')
         
-    sns.set_theme()
-    sns.set_style("white")
-    #sns.set_style("ticks")
-    #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,6.25)
-    sns.despine()
-    
-    #sns.lineplot(data=data, x='time', y='upperbound1', ax=ax[0])
-    sns.lineplot(data=data, x='time', y='harr1', ax=ax[0], color='black')
-    sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0], color='black')
-    ax[0].plot(time, F1)
-    if F1_I is not None:
-        ax[0].fill_between(time, F1_I[0], F1_I[1], alpha=0.1, color='black')
-    if F1_est is not None:
-        ax[0].plot(time_est, F1_est)
-    ax[0].set_xscale('log')
-    ax[0].set_yscale('log')
-    ax[0].set_xlabel(r'$t$')
-    ax[0].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(1)} (t) $')
-    
-    #sns.lineplot(data=data, x='time', y='upperbound2', ax=ax[1])
-    sns.lineplot(data=data, x='time', y='harr2', ax=ax[1], color='black')
-    sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1], color='black')
-    ax[1].plot(time, F2)
-    if F2_I is not None:
-        ax[1].fill_between(time, F2_I[0], F2_I[1], alpha=0.1, color='black')
-    if F2_est is not None:
-        ax[1].plot(time_est, F2_est)
-    ax[1].set_xscale('log')
-    ax[1].set_yscale('log')
-    ax[1].set_xlabel(r'$t$')
-    ax[1].set_ylabel(r'$ \mathcal{F}_{\mathcal{E}_H}^{(2)} (t) $')
-        
-    if save:
-        fig.savefig(f'{folder}/frame_potential.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
-    
-def plot_loschmidt_echo(time, le1, le2, d, le1_I=None, le2_I=None, folder='./', show=True, save=False):
+def plot_loschmidt_echo(time, 
+                        le1, 
+                        le2, 
+                        d, 
+                        le1_I=None, 
+                        le2_I=None, 
+                        folder='./', show=True, save=False, scale_width=1):
     # FIXME add non-isometric twirl operator version to compare
-    data = {'time': time, 
-            'asymptote2': (3/d**2)*np.ones(len(time)),
-            'gue2': (1/d**2)*np.ones(len(time)),
-            'asymptote1': (2/d)*np.ones(len(time)),
-            'gue1': (1/d)*np.ones(len(time)),
-            }
+    asymptote1 = (2/d)*np.ones(len(time))
+    gue1 = (1/d)*np.ones(len(time))
+    asymptote2 = (3/d**2)*np.ones(len(time))
+    gue2 = (1/d**2)*np.ones(len(time))
         
-    sns.set_theme()
-    sns.set_style("white")
-    #sns.set_style("ticks")
-    #sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
-    sns.set_context("paper")
-    fig, ax = plt.subplots(2,1)
-    fig.set_size_inches(3.386,6.25)
-    sns.despine()
-        
-    sns.lineplot(data=data, x='time', y='gue1', ax=ax[0], color='black')
-    sns.lineplot(data=data, x='time', y='asymptote1', ax=ax[0], color='black')
-    ax[0].plot(time, le1)
+    plot = Plotter(N_figs=2, 
+                   save_root=folder, 
+                   save_filename='echo.pdf', 
+                   show=show, save=save, scale_width=scale_width)
+    fig = plot.fig 
+    axis = plot.axis
+    plot.set_loglog()
+    
+    plot.line(x=time, y=gue1, color='black', ax_idx=0)
+    plot.line(x=time, y=asymptote1, color='black', ax_idx=0)
+    plot.line(x=time, y=le1, ax_idx=0)
     if le1_I is not None:
-        ax[0].fill_between(time, le1_I[0], le1_I[1], alpha=0.1, color='black')
-    ax[0].set_xscale('log')
-    ax[0].set_yscale('log')
-    ax[0].set_xlabel(r'$t$')
-    ax[0].set_ylabel(r'$\langle \mathcal{L}_1(t) \rangle_G$')
-        
-    sns.lineplot(data=data, x='time', y='gue2', ax=ax[1], color='black')
-    sns.lineplot(data=data, x='time', y='asymptote2', ax=ax[1], color='black')
-    ax[1].plot(time, le2)
+        plot.fill_betweeny(x=time, y_lower=le1_I[0], y_upper=le1_I[1], ax_idx=0)
+    axis[0].set_xlabel(r'$t$')
+    axis[0].set_ylabel(r'$\langle \mathcal{L}_1(t) \rangle_G$')
+    
+    plot.line(x=time, y=gue2, color='black', ax_idx=1)
+    plot.line(x=time, y=asymptote2, color='black', ax_idx=1)
+    plot.line(x=time, y=le2, ax_idx=1)
     if le2_I is not None:
-        ax[1].fill_between(time, le2_I[0], le2_I[1], alpha=0.1, color='black')
-    ax[1].set_xscale('log')
-    ax[1].set_yscale('log')
-    ax[1].set_xlabel(r'$t$')
-    ax[1].set_ylabel(r'$\langle \mathcal{L}_2(t) \rangle_G$')
+        plot.fill_betweeny(x=time, y_lower=le2_I[0], y_upper=le2_I[1], ax_idx=1)
+    axis[1].set_xlabel(r'$t$')
+    axis[1].set_ylabel(r'$\langle \mathcal{L}_2(t) \rangle_G$')
         
-    if save:
-        fig.savefig(f'{folder}/echo.pdf', bbox_inches="tight")
-    if show:
-        plt.show()
-    sns.reset_orig()
-    plt.close(fig)
