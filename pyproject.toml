@@ -1,6 +1,6 @@
 [project]
 name = "quantum-chaos"
-version = "0.0.1"
+version = "0.0.2"
 description = "Dynamics and measures quantum chaos models."
 readme = "README.md"
 requires-python = ">=3.7"
@@ -11,7 +11,9 @@ authors = [
 ]
 dependencies = [
   "numpy",
-  "scipy"
+  "scipy",
+  "h5py",
+  "seaborn"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
