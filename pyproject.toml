@@ -1,11 +1,11 @@
 [project]
-name = "kicked-boson"
+name = "quantum-chaos"
 version = "0.0.1"
-description = "Dynamics of quantum and classical kicked rotor model."
+description = "Dynamics and measures quantum chaos models."
 readme = "README.md"
 requires-python = ">=3.7"
 license = {file = "LICENSE"}
-keywords = ["quantum", "classical", "chaos", "boson"]
+keywords = ["quantum", "classical", "chaos", "boson", "spin", "ising"]
 authors = [
   {name = "H. L. Nourse"}
 ]
@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/thenoursehorse/kicked-boson"
+"Homepage" = "https://github.com/thenoursehorse/quantum-chaos"
 
 [tool.setuptools]
 
