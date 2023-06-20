@@ -2,11 +2,11 @@
 
 njobs=10
 source ${HOME}/venv/kicked-boson_qist/bin/activate
-export exec_folder=${HOME}/GitHub/kicked-boson/
-export root_folder=/scratch/NemotoU/henry/kicked-boson/boson_sampling
+export exec_folder=${HOME}/GitHub/quantum-chaos/kicked_bosons
+export root_folder=/scratch/NemotoU/henry/quantum-chaos/kicked_bosons
 
 M_arr=(300)
-num_ensembles_arr=(10)
+num_ensembles_arr=(100)
 thetaOmega_arr=$(seq 0 0.2 20)
 WOmega_arr=$(seq 1 0.1 9)
     
