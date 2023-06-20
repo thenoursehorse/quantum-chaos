@@ -7,7 +7,6 @@ import textwrap
 
 from quantum_chaos.quantum.pauli_3body import Pauli3Body
 from quantum_chaos.quantum.system import GenericSystemData
-from quantum_chaos.functions import golden_ratio
 
 if __name__ == '__main__':
     description = textwrap.dedent('''\
@@ -51,9 +50,9 @@ if __name__ == '__main__':
     # This is to calculate the frame potential for the ensemble
     # rather than the Haar averaged frame potential. It is expensive
     start = time.time()
-    model.set_unitary_evolve(num_ensembles=10)
-    #model.set_unitary_evolve(num_ensembles=None)
-    #model.set_unitary_evolve()
+    model.set_unitary_evolve(num_ensembles=10, Ti=Ti, Tf=Tf, Nt=Nt)
+    #model.set_unitary_evolve(num_ensembles=None, Ti=Ti, Tf=Tf, Nt=Nt)
+    #model.set_unitary_evolve(Ti=Ti, Tf=Tf, Nt=Nt)
     end = time.time()
     print("Time evolve unitaries took", end-start)
         
@@ -89,7 +88,7 @@ if __name__ == '__main__':
     if args.save_plots or args.show_plots:
         start = time.time()
         model.plot_eigenenergies(save=args.save_plots, show=args.show_plots)
-        model.plot_ratios(save=args.save_plots, show=args.show_plots, scale_width=0.5)
+        model.plot_ratios(save=args.save_plots, show=args.show_plots)
         model.plot_fractal_dimension(save=args.save_plots, show=args.show_plots)
         model.plot_spectral_functions(save=args.save_plots, show=args.show_plots)
         model.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, non_haar=True)

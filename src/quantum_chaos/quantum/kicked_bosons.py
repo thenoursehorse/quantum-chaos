@@ -3,22 +3,28 @@ import scipy
 
 from quantum_chaos.quantum.system import GenericSystem
 
-def phase_shift_unitary(N, phi_list, b_list):
+def phase_shift_unitary(M, phi_list, b_list):
+    '''
+    Sets the phase on each site (uses qutip)
+    '''
     Op = 0
-    for j in range(N):
+    for j in range(M):
         Op += phi_list[j] * b_list[j].dag() * b_list[j]
     Op *= -1j
     return Op.expm()
 
-def hopping_unitary(N, theta_list, eta_list, b_list, periodic=False):
+def hopping_unitary(M, theta_list, eta_list, b_list, periodic=False):
+    '''
+    Sets the multi-port beam splitter (uses qutip)
+    '''
     Op = 0
     if periodic:
-        for j in range(N):
-            k = (j+1)%N
+        for j in range(M):
+            k = (j+1)%M
             Op += theta_list[j] * np.exp(1j*eta_list[j]) * b_list[j].dag() * b_list[k]
             Op += theta_list[j] * np.exp(-1j*eta_list[j]) * b_list[k].dag() * b_list[j]
     else:
-        for j in range(N-1):
+        for j in range(M-1):
             k = j+1
             Op += theta_list[j] * np.exp(1j*eta_list[j]) * b_list[j].dag() * b_list[k]
             Op += theta_list[j] * np.exp(-1j*eta_list[j]) * b_list[k].dag() * b_list[j]
@@ -42,13 +48,13 @@ def delta_wj_fast(x, Omega=2, scale_N=True):
         return Omega * x
 
 class KickedBosons(GenericSystem):
-    def __init__(self, N,
-                       J=1,
-                       Omega=1,
-                       eta=0,
-                       theta_noise=0,
-                       phi_noise=0.05,
-                       eta_noise=0,
+    def __init__(self, M,
+                       theta,
+                       Omega,
+                       eta,
+                       theta_disorder=0,
+                       phi_disorder=0,
+                       eta_disorder=0,
                        excitations=1,
                        num_modes=2,
                        periodic=False,
@@ -56,19 +62,20 @@ class KickedBosons(GenericSystem):
                        **kwargs):
     
         
-        self._N = N
-        self._J = J
+        self._M = M
+        self._N = self._M # FIXME
+        self._theta = theta
         self._Omega = Omega
         self._eta = eta
-        self._theta_noise = theta_noise
-        self._phi_noise = phi_noise
-        self._eta_noise = eta_noise
+        self._theta_disorder = theta_disorder
+        self._phi_disorder = phi_disorder
+        self._eta_disorder = eta_disorder
         self._excitations = excitations
         self._num_modes = num_modes
         self._periodic = periodic
         self._use_qutip = use_qutip
 
-        self._dims = [num_modes for _ in range(self._N)]
+        self._dims = [num_modes for _ in range(self._M)]
 
         self._remove_vac = True
         
@@ -99,9 +106,9 @@ class KickedBosons(GenericSystem):
         else:
             # NOTE very expensive to calculate because of the logm
             if self._use_qutip:
-                return 1j * U.logm() / self.T
+                return 1j * U.logm() / self._T
             else:
-                return 1j * scipy.linalg.logm(U.todense()) / self.T
+                return 1j * scipy.linalg.logm(U.todense()) / self._T
 
     def make_eigenenergies(self, U):
         #eigenenergies = H_eff.eigenenergies() # qutip
@@ -121,12 +128,12 @@ class KickedBosons(GenericSystem):
         else:
             e, v = np.linalg.eig(U.todense())
         
-        ev = -1 * np.angle( e )
+        ev = -1 * np.angle( e ) / self._T
 
-        # should quasienergies should only be defined up to multiples of the driving frequency omega = 2*pi*T^{-1}?
+        # quasienergies should only be defined up to multiples of the driving frequency omega = 2*pi*T^{-1}?
         # If so restrict ev to lie within the interval [0,2pi]? Wait but np.angle already restricts it to [-pi,pi]
         # so it is fine
-        #ev = ev % (2*np.pi*(1/self.T))
+        #ev = ev % (2*np.pi*(1/self._T))
 
         ind = ev.argsort()
         return ev[ind], v[:,ind] 
@@ -136,34 +143,29 @@ class KickedBosons(GenericSystem):
         Make bosonic annihilation operator and the number operator on each site
         restricted to the maximum number of excitations
         '''
-        from kicked_boson.quantum.operators import get_destroy_operators
+        from quantum_chaos.quantum.operators import get_destroy_operators
         self._destroy_Op = get_destroy_operators(self._dims, self._excitations)
-        self._num_Op = [self._destroy_Op[j].dag() * self._destroy_Op[j] for j in range(self._N)]
+        self._num_Op = [self._destroy_Op[j].dag() * self._destroy_Op[j] for j in range(self._M)]
     
     def make_unitary(self):
-        T = 1
         rng = np.random.default_rng()
-        
+
         # Phases specifying hopping
-        #theta_list = [self._J*T*np.pi for _ in range(self._N)]
-        theta_list = self._J*T * np.ones(self._N)
-        theta_list += self._theta_noise * rng.uniform(-np.pi, np.pi, self._N)
-        
+        theta_list = self._theta * np.ones(self._M)
+        theta_list += self._theta_disorder * rng.uniform(-1, 1, self._M)
+            
         # Phases specifying trapping potential with noise
-        #phi_list = np.asarray([delta_wj(self._N, j+1, self._Omega) * T for j in range(self._N)])
-        phi_list = delta_wj_fast(np.arange(1, self._N+1), self._Omega)
-        phi_list += self._phi_noise * rng.uniform(-np.pi, np.pi, self._N)
-        #phi_list += self._phi_noise * rng.normal(0, 1/(self._N), self._N)
+        phi_list = delta_wj_fast(np.arange(1, self._M+1), self._Omega)
+        phi_list += self._phi_disorder * rng.uniform(-1, 1, self._M)
 
         # Time reversal symmetry breaking on hopping
-        #eta_list = [self._eta for _ in range(self._N)]
-        eta_list = self._eta * np.ones(self._N)
-        eta_list += self._eta_noise * rng.uniform(-np.pi, np.pi, self._N)
-
+        eta_list = self._eta * np.ones(self._M)
+        eta_list += self._eta_disorder * rng.uniform(-1, 1, self._M)
+        
         if self._use_qutip:
-            U_h = hopping_unitary(N=self._N, theta_list=theta_list, eta_list=eta_list, b_list=self._destroy_Op, periodic=self._periodic)
-            U_p = phase_shift_unitary(N=self._N, phi_list=phi_list, b_list=self._destroy_Op)
-            U = U_h*U_p
+            U2 = hopping_unitary(M=self._M, theta_list=theta_list, eta_list=eta_list, b_list=self._destroy_Op, periodic=self._periodic)
+            U1 = phase_shift_unitary(M=self._M, phi_list=phi_list, b_list=self._destroy_Op)
+            U = U2*U1
             # NOTE for a single-particle restriction, qutip puts index 0 as the vacuum. 
             # Then the next element is site N ... the last element N+1 is site 0
 
@@ -173,32 +175,30 @@ class KickedBosons(GenericSystem):
                 U = Qobj(U[1:,1:], dims=U.dims)
 
         else:
-            DiagBand = phi_list
-            H1 = scipy.sparse.csc_array( np.diag(DiagBand) )
+            # Phase shift angles
+            U1 = scipy.sparse.csc_array( np.diag(phi_list) )
             
-            # Now TR symmetry breaking
-            #OffDiagBand = theta_list[:self._N-1]
-            #H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            # Multi-port beam splitter
             
-            # TR symmetry breaking like Victor does (I don't think it does anything)
-            OffDiagBand = theta_list[:self._N-1] * np.exp(1j*eta_list[:self._N-1])
-            H2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            # with TR symmetry breaking like Victor does (I don't think it does anything)
+            OffDiagBand = theta_list[:self._M-1] * np.exp(1j*eta_list[:self._M-1])
+            U2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
             
             if self._periodic:
-                H2 = H2.tolil()
-                H2[0,-1] = theta_list[-1] * np.exp(1j*eta_list[-1])
-                H2[-1,0] = (theta_list[-1] * np.exp(1j*eta_list[-1])).conj()
+                U2 = H2.tolil()
+                U2[0,-1] = theta_list[-1] * np.exp(1j*eta_list[-1])
+                U2[-1,0] = (theta_list[-1] * np.exp(1j*eta_list[-1])).conj()
             
-            # TR symmetry breaking like Haldane model
-            #OffOffDiagBand = 1j*eta_list[:self._N-2]
-            #H2 += scipy.sparse.coo_array( np.diag(OffOffDiagBand, 2) + np.diag(OffOffDiagBand.conj(), -2) )
+            # with TR symmetry breaking like Haldane model
+            #OffOffDiagBand = 1j*eta_list[:self._M-2]
+            #U2 += scipy.sparse.coo_array( np.diag(OffOffDiagBand, 2) + np.diag(OffOffDiagBand.conj(), -2) )
             #if self._periodic:
-            #    H2 = H2.tolil()
+            #    U2 = U2.tolil()
             #    something here to handle it
             
-            H2 = H2.tocsc()
+            U2 = U2.tocsc()
             
-            U = scipy.sparse.linalg.expm(-1j*H2) @ scipy.sparse.linalg.expm(-1j*H1)
+            U = scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)
 
         return U 
     

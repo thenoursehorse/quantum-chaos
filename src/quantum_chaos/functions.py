@@ -382,6 +382,7 @@ def plot_eigenenergies(energies,
 
 def plot_ratios(r, 
                 folder='./', show=True, save=False, scale_width=1):
+    #r = r.flatten()
     # Get empirical cdf from r
     x = np.linspace(0,1)
     xs, ys = ecdf(r)
@@ -683,7 +684,7 @@ def plot_frame_potential(time_haar,
         N_figs = 3
     else:
         N_figs = 2
-    plot = Plotter(N_figs=3, 
+    plot = Plotter(N_figs=N_figs, 
                    save_root=folder, 
                    save_filename='frame_potential.pdf', 
                    show=show, save=save, scale_width=scale_width)

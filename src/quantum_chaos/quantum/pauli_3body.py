@@ -1,7 +1,6 @@
 import numpy as np
 import scipy
 
-from quantum_chaos.operators import *
 from quantum_chaos.quantum.system import GenericSystem
 
 class Pauli3Body(GenericSystem):
@@ -29,7 +28,7 @@ class Pauli3Body(GenericSystem):
         return np.linalg.eigh(H.full())
     
     def make_operators(self):
-        from kicked_boson.quantum.operators import get_sigma_ops
+        from quantum_chaos.quantum.operators import get_sigma_ops
         sx_list = get_sigma_ops(self._N, 'x')
         sy_list = get_sigma_ops(self._N, 'y')
         sz_list = get_sigma_ops(self._N, 'z')

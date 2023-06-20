@@ -5,31 +5,31 @@ source ${HOME}/venv/kicked-boson_qist/bin/activate
 export exec_folder=${HOME}/GitHub/kicked-boson/
 export root_folder=/scratch/NemotoU/henry/kicked-boson/boson_sampling
 
-N_arr=(300)
+M_arr=(300)
 num_ensembles_arr=(10)
-KChi_arr=$(seq 0 0.5 50)
-phi_noise_arr=$(seq 0.1 0.01 1)
-
+thetaOmega_arr=$(seq 0 0.2 20)
+WOmega_arr=$(seq 1 0.1 9)
+    
 bosons() {
-  N=$1
+  M=$1
   num_ensembles=$2
-  KChi=$3
-  phi_noise=$4
-  
-  outfile=bosons_N${N}_num_ensembles${g}_KChi${KChi}_phi_noise${phi_noise}.out
+  thetaOmega=$3
+  WOmega=$4
+    
+  outfile=bosons_M${M}_num_ensembles${g}_thetaOmega${thetaOmega}_WOmega${WOmega}.out
 
   python3 -u ${exec_folder}/make_data.py \
-    -N ${N} \
+    -M ${M} \
     -num_ensembles ${num_ensembles} \
-    -KChi ${KChi} \
-    -phi_noise ${phi_noise} \
+    -thetaOmega ${thetaOmega} \
+    -WOmega ${WOmega} \
     -root_folder ${root_folder} \
-    -save_plots 1 -show_plots 0 \
+    -save_plots 0 -show_plots 0 \
     -save_data 1 \
 	  &> ${outfile}
 }
 export -f bosons
 
-# Run in parallel (indexed as alpha, N, g) using GNU parallel
-#parallel -j${njobs} --memsuspend 2G bosons ::: "${N_arr[@]}" ::: "${num_ensembles_arr[@]}" ::: "${KChi_arr[@]}" ::: "${phi_noise_arr[@]}"
-parallel -j${njobs} bosons ::: "${N_arr[@]}" ::: "${num_ensembles_arr[@]}" ::: "${KChi_arr[@]}" ::: "${phi_noise_arr[@]}"
+# Run in parallel using GNU parallel
+#parallel -j${njobs} --memsuspend 2G bosons ::: "${M_arr[@]}" ::: "${num_ensembles_arr[@]}" ::: "${thetaOmega_arr[@]}" ::: "${WOmega_arr[@]}"
+parallel -j${njobs} bosons ::: "${M_arr[@]}" ::: "${num_ensembles_arr[@]}" ::: "${thetaOmega_arr[@]}" ::: "${WOmega_arr[@]}"

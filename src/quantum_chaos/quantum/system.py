@@ -33,8 +33,7 @@ class GenericSystem(object):
     def __init__(self, num_ensembles=1, folder='figs/', T=1):
         self._num_ensembles = num_ensembles
         self._folder = folder
-        self.T = T
-        self._T0 = deepcopy(self.T)
+        self._T = T
 
     def truncate_eigenenergies(self):
         #e_min = min(self._eigenenergies.flatten())

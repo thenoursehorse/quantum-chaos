@@ -36,7 +36,8 @@ class Plotter(object):
     
         sns.set_theme()
         sns.set_style("white")
-        sns.set_context("paper")
+        sns.set_context("paper",font_scale=0.9) # default is 10pt, we want 9pt
+        #sns.set_context("paper", rc={'font-size':9})
         if use_tics:
             sns.set_style("ticks")
             sns.set_style({"xtick.direction": "in","ytick.direction": "in"})
