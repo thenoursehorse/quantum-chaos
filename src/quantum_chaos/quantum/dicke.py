@@ -8,6 +8,8 @@ class Dicke(GenericSystem):
                        Nc=320,
                        kappa=1.2,
                        lambda0=0.5,
+                       cutoff_upper=None,
+                       cutoff_lower=None,
                        **kwargs):
         
         self._N = N
@@ -17,31 +19,36 @@ class Dicke(GenericSystem):
         self._dim = self._Nc * self._Nd
         self._kappa = kappa
         self._lambda0 = lambda0
+        self._cutoff_upper = cutoff_upper
+        self._cutoff_lower = cutoff_lower
 
         super().__init__(**kwargs)
+        self._model = 'Dicke'
         self.run()
     
     def run(self):
         self._H = [self.make_H() for _ in range(self._num_ensembles)]
-        self._eigenenergies = []
+        self._eigenenergies = [] 
         self._eigenvectors = []
         for m in range(self._num_ensembles):
             e, v = self.make_eigenenergies(self._H[m])
-            self._eigenenergies.append(e)
+            self._eigenenergies.append(e) 
             self._eigenvectors.append(v)
-        self._eigenenergies = np.asarray(self._eigenenergies)
-        self._eigenvectors = np.asarray(self._eigenvectors)
-
+        self._eigenenergies = np.array(self._eigenenergies)
+        self._eigenvectors = np.array(self._eigenvectors)
+        self._d = self._eigenenergies[0].shape[0]
+        print(f'Keeping {self._d} eigenenergies')
+        
     def make_eigenenergies(self, H):
-        e, v =  np.linalg.eigh(np.asarray(H))
-        print("Finished diagonalizing Hamiltonian.")
-        idx = e <= 4 / self._N
-        e = e[idx]
-        v = v[:,idx]
-        idx = e >= 0.4 / self._N
-        e = e[idx]
-        v = v[:,idx]
-        self._d = e.size
+        e, v = np.linalg.eigh(H.todense())
+        if self._cutoff_upper is not None:
+            idx = e <= self._cutoff_upper / self._N
+            e = e[idx]
+            v = v[:,idx]
+        if self._cutoff_lower is not None:
+            idx = e >= self._cutoff_lower / self._N
+            e = e[idx]
+            v = v[:,idx]
         return e, v
 
     def make_H(self):
@@ -52,8 +59,8 @@ class Dicke(GenericSystem):
         N = self._N
         j = self._j
 
-        #H = scipy.sparse.lil_array( (self._dim,self._dim), dtype=np.complex_ )
         H = np.zeros( (self._dim,self._dim), dtype=np.complex_ )
+        #H = scipy.sparse.lil_array( (self._dim,self._dim), dtype=np.complex_ )
         for n in range(Nc):
             for nn in range(Nc):
                 for i in range(Nd):
@@ -79,7 +86,9 @@ class Dicke(GenericSystem):
                         if nn == (n+1) and mm == (m-1):
                             H[nn*Nd+ii, n*Nd+i] = (lambda0/np.sqrt(N)) * np.sqrt(n+1) * np.sqrt(j*(j+1) - m*(m-1)) 
 
-        #H = H.tocsc()
-
-        print("Finished making Hamiltonian.")
-        return H
+        #H = H.tocsr()
+        return scipy.sparse.csr_array(H)
+    
+    @property
+    def H(self):
+        return self._H

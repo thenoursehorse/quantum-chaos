@@ -2,7 +2,7 @@ import numpy as np
 import scipy
 from scipy.stats import ks_1samp as cdftest
 import seaborn as sns
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 #import pandas as pd
 
 from quantum_chaos.plotter import Plotter
@@ -135,6 +135,12 @@ def chi_distance(xs, kind='ratios'):
         #resgse = cdftest(xs, spacing_cgse)
         
     return respois.pvalue, resgoe.pvalue, resgue.pvalue #, resgse.pvalue
+    
+def fit_normal(vec, npts=1000):
+    mu, std = scipy.stats.norm.fit(vec)
+    x = np.linspace(min(vec), max(vec), npts)
+    y = scipy.stats.norm.pdf(x, mu, std)
+    return x, y, mu, std
 
 def unfold_energies(energies, 
                     polytype='chebyshev', 
@@ -363,8 +369,14 @@ def otoc_haar(d, c2=None, c4=None, A=None, B=None, kind='4-point'):
         raise ValueError('Unrecognized kind !')
     
 def plot_eigenenergies(energies, 
-                       N, 
+                       N,
+                       xlabel=None,
+                       ylabel=None,
                        folder='./', show=True, save=False, scale_width=1):
+    if xlabel is None:
+        xlabel = r'$n$'
+    if ylabel is None:
+        ylabel=r'$E_n/N$'
     plot = Plotter(N_figs=1,
                    save_root=folder, 
                    save_filename='eigenenergies.pdf', 
@@ -377,10 +389,11 @@ def plot_eigenenergies(energies,
     
     for m in range(num_ensembles):
         axis[0].plot(energies[m]/N, '.')
-    axis[0].set_xlabel(r'$n$')
-    axis[0].set_ylabel(r'$E_n/N$')
+    axis[0].set_xlabel(xlabel)
+    axis[0].set_ylabel(ylabel)
 
-def plot_ratios(r, 
+def plot_ratios(r,
+                model='Model',
                 folder='./', show=True, save=False, scale_width=1):
     #r = r.flatten()
     # Get empirical cdf from r
@@ -407,8 +420,8 @@ def plot_ratios(r,
     fig = plot.fig
     axis = plot.axis
                     
-    #sns.kdeplot(data=data, x='r', label='Kicked rotor', cut=0, bw_adjust=2, ax=ax[0])
-    plot.histplot(x=r, label='Model', color=colors['model'], ax_idx=0)
+    #sns.kdeplot(data=data, x='r', label=model, cut=0, bw_adjust=2, ax=ax[0])
+    plot.histplot(x=r, label=model, color=colors['model'], ax_idx=0)
     plot.line(x=x, y=poiss, label='Poisson', color=colors['poiss'], ax_idx=0)
     plot.line(x=x, y=goe, label='GOE', color=colors['goe'], ax_idx=0)
     plot.line(x=x, y=gue, label='GUE', color=colors['gue'], ax_idx=0)
@@ -419,7 +432,7 @@ def plot_ratios(r,
     axis[0].set_xlim(xmin=0, xmax=1)
     axis[0].set_ylim(ymin=0, ymax=2)
 
-    plot.line(x=xs_avg, y=ys, label='Model', color=colors['model'], ax_idx=1)
+    plot.line(x=xs_avg, y=ys, label=model, color=colors['model'], ax_idx=1)
     plot.fill_betweenx(y=ys, x_lower= xs_I[0], x_upper=xs_I[1], color=colors['model'], ax_idx=1)
     #sns.ecdfplot(data=data_single, x='r', color='black', alpha=0.25, label='Kicked rotor', ax=ax[1])
     plot.line(x=x, y=cpoiss, label='Poisson', color=colors['poiss'], ax_idx=1)
@@ -432,7 +445,8 @@ def plot_ratios(r,
     axis[1].set_xlim(xmin=0, xmax=1)
     axis[1].set_ylim(ymin=0, ymax=1)
 
-def plot_spacings(s, 
+def plot_spacings(s,
+                  model='Model',
                   folder='./', show=True, save=False, scale_width=1):
     x = np.linspace(0,5)
     xs, ys = ecdf(s)
@@ -454,7 +468,7 @@ def plot_spacings(s,
     fig = plot.fig
     axis = plot.axis
     
-    plot.histplot(x=s.flatten(), label='Model', color=colors['model'], ax_idx=0)
+    plot.histplot(x=s.flatten(), label=model, color=colors['model'], ax_idx=0)
     plot.line(x=x, y=poiss, label='Poisson', color=colors['poiss'], ax_idx=0)
     plot.line(x=x, y=goe, label='GOE', color=colors['goe'], ax_idx=0)
     plot.line(x=x, y=gue, label='GUE', color=colors['gue'], ax_idx=0)
@@ -463,7 +477,7 @@ def plot_spacings(s,
     axis[0].set_xlim(xmin=0, xmax=5)
     axis[0].set_ylim(ymin=0, ymax=1)
     
-    plot.line(x=xs_avg, y=ys, label='Model', color=colors['model'], ax_idx=1)
+    plot.line(x=xs_avg, y=ys, label=model, color=colors['model'], ax_idx=1)
     plot.fill_betweenx(y=ys, x_lower= xs_I[0], x_upper=xs_I[1], color=colors['model'], ax_idx=1)
     plot.line(x=x, y=cpoiss, label='Poisson', color=colors['poiss'], ax_idx=1)
     plot.line(x=x, y=cgoe, label='GOE', color=colors['goe'], ax_idx=1)
@@ -479,37 +493,41 @@ def plot_fractal_dimension(energies,
                            dq_I, 
                            q_arr, 
                            q=2, 
-                           num_ensembles=1, 
+                           num_ensembles=1,
+                           model='Model',
                            folder='./', show=True, save=False, scale_width=1):
-    xmin = np.inf
-    xmax = -np.inf
-    for i in range(len(energies)):
-        xmin_est = np.min(energies[i])
-        xmax_est = np.max(energies[i])
-        if xmin_est < xmin:
-            xmin = xmin_est
-        if xmax_est > xmax:
-            xmax = xmax_est
-    x = np.array([xmin, xmax])
-
     energies_goe = energies[1]
     energies_gue = energies[2]
     energies = energies[0]
+    
     dq_goe = dq[1]
     dq_gue = dq[2]
     dq = dq[0]
 
-    y = np.mean(dq) * np.ones(shape=x.shape)
-    y_goe = np.mean(dq_goe) * np.ones(shape=x.shape)
-    y_gue = np.mean(dq_gue) * np.ones(shape=x.shape)
-
     dq_goe_avg = dq_avg[1]
     dq_gue_avg = dq_avg[2]
     dq_avg = dq_avg[0]
+    
     dq_goe_I = dq_I[1]
     dq_gue_I = dq_I[2]
     dq_I = dq_I[0]
     
+    xmin = np.min(energies)
+    xmax = np.max(energies)
+    if energies_goe is not None:
+        xmin = min(xmin, np.min(energies_goe))
+        xmax = max(xmax, np.max(energies_goe))
+    if energies_gue is not None:
+        xmin = min(xmin, np.min(energies_gue))
+        xmax = max(xmax, np.max(energies_gue))
+    x = np.array([xmin, xmax])
+
+    y = np.mean(dq) * np.ones(shape=x.shape)
+    if dq_goe is not None:
+        y_goe = np.mean(dq_goe) * np.ones(shape=x.shape)
+    if dq_gue is not None:
+        y_gue = np.mean(dq_gue) * np.ones(shape=x.shape)
+
     plot = Plotter(N_figs=2,
                    save_root=folder, 
                    save_filename=f'fractal_dimension_q{q}.pdf', 
@@ -517,27 +535,34 @@ def plot_fractal_dimension(energies,
                    use_tics=True)
     fig = plot.fig
     axis = plot.axis
-        
-    plot.line(x=x, y=y_goe, label='GOE', color=colors['goe'], ax_idx=0)
-    plot.line(x=x, y=y_gue, label='GUE', color=colors['gue'], ax_idx=0)
-    plot.line(x=x, y=y, label='Model', color=colors['model'], ax_idx=0)
+
+    if dq_goe is not None:    
+        plot.line(x=x, y=y_goe, label='GOE', color=colors['goe'], ax_idx=0)
+    if dq_gue is not None:
+        plot.line(x=x, y=y_gue, label='GUE', color=colors['gue'], ax_idx=0)
+    plot.line(x=x, y=y, label=model, color=colors['model'], ax_idx=0)
     
     ymin = np.inf
     ymax = 0
     for m in range(num_ensembles):
-        plot.scatter(x=energies_goe[m], y=dq_goe[m], color=colors['goe'], ax_idx=0)
-        plot.scatter(x=energies_gue[m], y=dq_gue[m], color=colors['gue'], ax_idx=0)
+        if dq_goe is not None:
+            plot.scatter(x=energies_goe[m], y=dq_goe[m], color=colors['goe'], ax_idx=0)
+        if dq_gue is not None:
+            plot.scatter(x=energies_gue[m], y=dq_gue[m], color=colors['gue'], ax_idx=0)
         plot.scatter(x=energies[m], y=dq[m], color=colors['model'], ax_idx=0)
 
-        ymin_est = min(np.min(dq_goe[m]), np.min(dq_gue[m]), np.min(dq[m]))
-        if ymin_est < ymin:
-            ymin = ymin_est
-        ymax_est = max(np.max(dq_goe[m]), np.max(dq_gue[m]), np.max(dq[m]))
-        if ymax_est > ymax:
-            ymax = ymax_est
+        ymin = min(ymin, np.min(dq[m]))
+        ymax = min(ymax, np.max(dq[m]))
+        if dq_goe is not None:
+            ymin = min(ymin, np.min(dq_goe[m]))
+            ymax = max(ymax, np.max(dq_goe[m]))
+        if dq_gue is not None:
+            ymin = min(ymin, np.min(dq_gue[m]))
+            ymax = max(ymax, np.max(dq_gue[m]))
  
     axis[0].legend()
-    axis[0].set_xlabel(r'$E_n/N$')
+    #axis[0].set_xlabel(r'$E_n/N$')
+    axis[0].set_xlabel(r'$E_n$')
     axis[0].set_ylabel(f'$D_{q}$')
     axis[0].set_xlim(xmin=x[0], xmax=x[-1])
     if ymin < 0.05:
@@ -546,12 +571,14 @@ def plot_fractal_dimension(energies,
         ymax=0.95
     axis[0].set_ylim(ymin=ymin-0.05, ymax=ymax+0.05)
 
-    plot.linepoints(x=q_arr, y=dq_avg, label='Model', color=colors['model'], ax_idx=1)
+    plot.linepoints(x=q_arr, y=dq_avg, label=model, color=colors['model'], ax_idx=1)
     plot.fill_betweeny(x=q_arr, y_lower=dq_I[0], y_upper=dq_I[1], color=colors['model'], ax_idx=1)
-    plot.linepoints(x=q_arr, y=dq_goe_avg, label='GOE', color=colors['goe'], ax_idx=1)
-    plot.fill_betweeny(x=q_arr, y_lower=dq_goe_I[0], y_upper=dq_goe_I[1], color=colors['goe'], ax_idx=1)
-    plot.linepoints(x=q_arr, y=dq_gue_avg, label='GUE', color=colors['gue'], ax_idx=1)
-    plot.fill_betweeny(x=q_arr, y_lower=dq_gue_I[0], y_upper=dq_gue_I[1], color=colors['gue'], ax_idx=1)
+    if dq_goe_avg is not None:
+        plot.linepoints(x=q_arr, y=dq_goe_avg, label='GOE', color=colors['goe'], ax_idx=1)
+        plot.fill_betweeny(x=q_arr, y_lower=dq_goe_I[0], y_upper=dq_goe_I[1], color=colors['goe'], ax_idx=1)
+    if dq_gue_avg is not None:
+        plot.linepoints(x=q_arr, y=dq_gue_avg, label='GUE', color=colors['gue'], ax_idx=1)
+        plot.fill_betweeny(x=q_arr, y_lower=dq_gue_I[0], y_upper=dq_gue_I[1], color=colors['gue'], ax_idx=1)
     axis[1].legend()
     axis[1].set_xlabel(r'$q$')
     axis[1].set_ylabel(f'$D_q$')
@@ -561,7 +588,8 @@ def plot_fractal_dimension_state(time,
                                  dq_state_avg, 
                                  q_arr, 
                                  q=2, 
-                                 dq_state_I=None, 
+                                 dq_state_I=None,
+                                 model='Model',
                                  folder='./', show=True, save=False, scale_width=1):
     plot = Plotter(N_figs=2,
                    save_root=folder, 
@@ -573,7 +601,7 @@ def plot_fractal_dimension_state(time,
     plot.set_log(axis='x')
         
     q_idx = np.where(np.abs(q_arr - q) < 1e-10)[0][0]
-    plot.line(x=time, y=dq_state_avg[:,q_idx], label='Model', color=colors['model'], ax_idx=0)
+    plot.line(x=time, y=dq_state_avg[:,q_idx], label=model, color=colors['model'], ax_idx=0)
     if dq_state_I is not None:
         plot.fill_betweeny(x=time, y_lower=dq_state_I[0][:,q_idx], y_upper=dq_state_I[1][:,q_idx], color=colors['model'], ax_idx=0)
     #ax[0].legend()
@@ -592,6 +620,7 @@ def plot_survival_probability(time,
                               w_ti_avg,
                               w_init_I=None,
                               vmax=0.1,
+                              model='Model',
                               folder='./', show=True, save=False, scale_width=1):
     plot = Plotter(N_figs=2,
                    save_root=folder, 
@@ -602,7 +631,7 @@ def plot_survival_probability(time,
     axis = plot.axis
     plot.set_log(axis='x')
     
-    plot.line(x=time, y=w_init_avg, label='Model', color=colors['model'], ax_idx=0)
+    plot.line(x=time, y=w_init_avg, label=model, color=colors['model'], ax_idx=0)
     if w_init_I is not None:
         plot.fill_betweeny(x=time, y_lower=w_init_I[0], y_upper=w_init_I[1], color=colors['model'], ax_idx=0)
     axis[0].set_xlim(xmin=time[0], xmax=time[-1])
@@ -621,12 +650,42 @@ def plot_survival_probability(time,
 def plot_spectral_functions(time, 
                             c2, 
                             c4, 
-                            d, 
+                            d,
+                            T=1,
                             c2_I=None, 
                             c4_I=None, 
+                            t_H=None,
+                            model='Model',
                             folder='./', show=True, save=False, scale_width=1):
+    
+    if t_H is None:
+        t_H = d*T # just assume COE/CUE
+    
+    print("t_H =", t_H)
+    
+    idx = np.where(time > t_H)[0]
+    time_H = time / t_H
+    cue2 = (1/d) * time_H
+    cue2[idx] = (1/d) * 1
+    coe2 = (1/d) * (time_H) * ( 2 - np.log(1+2*(time_H)))
+    coe2[idx] = (1/d) * (2 - time_H[idx] * np.log( (2*time_H[idx]+1) / (2*time_H[idx]-1) ) )
+
+    gaussian = True
+    # For Gaussian
+    if gaussian:
+        r_t2 = (t_H * scipy.special.j1(4*d*time_H) / (2*d*time))**2
+        cue2 += r_t2
+        coe2 += r_t2
+    
     asymptote2 = (1/d)*np.ones(len(time))
     asymptote4 = ((2*d-1)/d**3)*np.ones(len(time))
+
+    # Rescale so c2 is c2/d instead of c2/d^2
+    c2 = c2 * d
+    c2_I = c2_I * d
+    asymptote2 = asymptote2 * d
+    coe2 = coe2 * d
+    cue2 = cue2 * d
         
     plot = Plotter(N_figs=2, 
                    save_root=folder, 
@@ -636,20 +695,47 @@ def plot_spectral_functions(time,
     axis = plot.axis
     plot.set_loglog()
     
-    plot.line(x=time, y=asymptote2, color='black', ax_idx=0)
-    plot.line(x=time, y=c2, ax_idx=0)
+    plot.line(x=time, y=asymptote2, label='Poisson', color=colors['poiss'], ax_idx=0)
+    plot.line(x=time, y=coe2, label='COE', color=colors['goe'], ax_idx=0)
+    plot.line(x=time, y=cue2, label='CUE', color=colors['gue'], ax_idx=0)
+    plot.line(x=time, y=c2, label=model, color=colors['model'], ax_idx=0)
     if c2_I is not None:
         plot.fill_betweeny(x=time, y_lower=c2_I[0], y_upper=c2_I[1], ax_idx=0)
+    
+    
+    def make_ticks(data_array, use_log=True):
+        lowmag = np.round(np.log10(min(data_array)))
+        highmag = np.round(np.log10(max(data_array)))
+        npts = int(np.abs(highmag-lowmag))+1
+        if use_log:
+            return np.logspace(lowmag, highmag, npts)
+
+    axis[0].legend()
+    timeticks = make_ticks(time)
+    c2ticks = make_ticks(c2)
+    axis[0].set_xticks(timeticks)
+    axis[0].set_yticks(c2ticks)
     axis[0].set_xlabel(r'$t$')
     axis[0].set_ylabel(r'$ \tilde{\mathcal{R}}_2(t) / d^2$')
+
+    # For the kicked-boson paper 
+    #axis[0].set_xlabel(r'$mT$')
+    #axis[0].set_xlim(xmin=1, xmax=1000)
+    #axis[0].set_ylabel(r'$ \tilde{\mathcal{R}}_2(mT) / M$')
+    #axis[0].set_ylim(ymin=1e-2, ymax=0.5e1)
+    #axis[0].set_yticks( [1e0, 1e-1, 1e-2] )
     
-    plot.line(x=time, y=asymptote4, color='black', ax_idx=1)
-    plot.line(x=time, y=c4, ax_idx=1)
+    plot.line(x=time, y=asymptote4, label='Poisson', color=colors['poiss'], ax_idx=1)
+    plot.line(x=time, y=c4, label=model, color=colors['model'], ax_idx=1)
     if c4_I is not None:
         plot.fill_betweeny(x=time, y_lower=c4_I[0], y_upper=c4_I[1], ax_idx=1)
+    
+    c4ticks = make_ticks(c4)
+    axis[1].set_xticks(timeticks)
+    axis[1].set_yticks(c4ticks)
     axis[1].set_xlabel(r'$t$')
     axis[1].set_ylabel(r'$ \tilde{\mathcal{R}}_4(t) / d^4$')
-        
+    
 def plot_frame_potential(time_haar, 
                          F1_haar,
                          F2_haar=None,
@@ -755,3 +841,166 @@ def plot_loschmidt_echo(time,
     axis[1].set_xlabel(r'$t$')
     axis[1].set_ylabel(r'$\langle \mathcal{L}_2(t) \rangle_G$')
         
+def plot_matrix(mat,
+                vmin=None,
+                vmax=None,
+                vmax_abs=None,
+                x=None,
+                y=None,
+                save_filename=f'matrix.pdf',
+                folder='./', show=True, save=False, scale_width=1):
+
+    if np.iscomplexobj(mat):
+        is_complex = True
+        mat_real = mat.real
+        mat_imag = mat.imag
+        N_figs = 3
+    else:
+        is_complex = False
+        mat_real = mat
+        N_figs = 2
+
+    plot = Plotter(N_figs=N_figs,
+                   save_root=folder, 
+                   save_filename=save_filename,
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=False)
+    fig = plot.fig
+    axis = plot.axis
+    
+    if x is None:
+        x = [i for i in range(1,mat_real.shape[0]+1)]
+    if y is None:
+        y = [i for i in range(1,mat_real.shape[1]+1)]
+
+    cmap = sns.color_palette("vlag", as_cmap=True)
+    #cmap = sns.color_palette("icefire", as_cmap=True)
+    #cmap = sns.diverging_palette(145, 300, s=60, as_cmap=True)
+    
+    image_abs, cb_abs = plot.colormesh(x=x, y=y, z=np.abs(mat), vmin=0, vmax=vmax_abs, ax_idx=0, colorbar=True)
+    cb_abs.set_label(r'$|U|$')
+    axis[0].set_xlim(xmin=x[0], xmax=x[-1])
+    axis[0].set_ylim(ymin=y[0], ymax=y[-1])
+    axis[0].invert_yaxis()
+    axis[0].set_xlabel(r'mode $i$')
+    axis[0].set_ylabel(f'mode $j$')
+    
+    image_real, cb_real = plot.colormesh(x=x, y=y, z=mat_real, vmin=vmin, vmax=vmax, ax_idx=1, colorbar=True, cmap=cmap)
+    cb_real.set_label(r'$\mathrm{Re}(U)$')
+    axis[1].set_xlim(xmin=x[0], xmax=x[-1])
+    axis[1].set_ylim(ymin=y[0], ymax=y[-1])
+    axis[1].invert_yaxis()
+    axis[1].set_xlabel(r'mode $i$')
+    axis[1].set_ylabel(f'mode $j$')
+
+    if is_complex:
+        image_imag, cb_imag = plot.colormesh(x=x, y=y, z=mat_imag, vmin=vmin, vmax=vmax, ax_idx=2, colorbar=True, cmap=cmap)
+        cb_imag.set_label(r'$\mathrm{Im}(U)$')
+        axis[2].set_xlim(xmin=x[0], xmax=x[-1])
+        axis[2].set_ylim(ymin=y[0], ymax=y[-1])
+        axis[2].invert_yaxis()
+        axis[2].set_xlabel(r'mode $i$')
+        axis[2].set_ylabel(f'mode $j$')
+
+def plot_pdf(vec,
+             vec_scaled=None,
+             bins='auto',
+             standardize=True,
+             model='Model',
+             save_filename=f'pdf.pdf',
+             folder='./', show=True, save=False, scale_width=1):
+    # scipy.stats.probplot(mat.real.flatten(), dist="norm", plot=plt)
+    # sm.qqplot(elements_scaled_t[-1], line='s') # or line='45'
+
+    def make_standard(x, doit=False):
+        if doit:
+            #return (x - np.mean(x)) / np.std(x)
+            return x / np.std(x)
+        else:
+            return x
+            
+    if np.iscomplexobj(vec):
+        is_complex = True
+        vec_real = vec.real
+        vec_imag = vec.imag
+        N_figs = 3
+    else:
+        is_complex = False
+        vec_real = vec
+        N_figs = 2
+
+    if vec_scaled is None:
+        vec_all = np.concatenate( (vec.real, vec.imag ) )
+    else:
+        vec_all = vec_scaled
+
+    plot = Plotter(N_figs=N_figs,
+                   save_root=folder, 
+                   save_filename=save_filename,
+                   show=show, save=save, scale_width=scale_width,
+                   use_tics=False)
+    fig = plot.fig
+    axis = plot.axis
+
+    # Real and imag combined
+    vec_all = make_standard(vec_all, standardize)
+    plot.histplot(vec_all, color=colors['model'], bins=bins, ax_idx=0, label=model)
+    x, y, mu, std, = fit_normal(vec_all)
+    plot.line(x=x, y=y, ax_idx=0, label=r'Standard Gaussian')
+    print("mu =", mu)
+    print("var =", std**2)
+    axis[0].set_xlabel(r'$z$')
+    axis[0].set_ylabel(r'$P(z)$')
+        
+    # Real part
+    vec_real = make_standard(vec_real, standardize)
+    plot.histplot(vec_real, color=colors['model'], ax_idx=1)
+    x_real, y_real, _, _ = fit_normal(vec_real)
+    plot.line(x=x_real, y=y_real, ax_idx=1)
+    axis[1].set_xlabel(r'$\mathrm{Re}(z)$')
+    axis[1].set_ylabel(r'$P(z)$')
+    
+    # Imag part
+    if is_complex:
+        vec_imag = make_standard(vec_imag, standardize)
+        plot.histplot(vec_imag, color=colors['model'], ax_idx=2)
+        x_imag, y_imag, _, _ = fit_normal(vec_imag)
+        plot.line(x=x_imag, y=y_imag, ax_idx=2)
+        axis[2].set_xlabel(r'$\mathrm{Im}(z)$')
+        axis[2].set_ylabel(r'$P(z)$')
+
+    if standardize:
+        for ax in axis:
+            ax.set_xlim(xmin=-4, xmax=4)
+            ax.set_ylim(ymin=0, ymax=0.45)
+        axis[0].legend()
+
+def plot_qq(x, 
+            alpha=0.05,
+            model='Model',
+            save_filename=f'qqplot.pdf',
+            folder='./', show=True, save=False, scale_width=1):
+    
+    plot = Plotter(N_figs=1,
+                   save_root=folder, 
+                   save_filename=save_filename,
+                   show=show, save=save, scale_width=scale_width)
+    fig = plot.fig
+    axis = plot.axis
+    
+    qnorm = scipy.stats.norm.ppf
+    dnorm = scipy.stats.norm.pdf
+    p = np.linspace(0,1,100000,endpoint=True)
+    xi = qnorm(p)
+    ci = qnorm(1-alpha/2) / np.sqrt(len(x)) * np.sqrt(p * (1 - p)) / dnorm(xi)
+
+    import statsmodels.api as sm
+    plot.line(x=xi, y=xi-ci, ax_idx=0, color='black', label=r'$\alpha=5\%$')
+    plot.line(x=xi, y=xi+ci, ax_idx=0, color='black')
+    #sm.qqplot(x, fit=True, line='s', ax=axis[0], markersize=2, label='data')
+    sm.qqplot(x, fit=True, line='s', ax=axis[0], linestyle='-', marker=None, label=model)
+    axis[0].set_xlim(xmin=-4,xmax=4)
+    axis[0].set_ylim(ymin=-4,ymax=4)
+    axis[0].set_xlabel('Theoretical quantiles')
+    axis[0].set_ylabel('Sample quantiles')
+    axis[0].legend()

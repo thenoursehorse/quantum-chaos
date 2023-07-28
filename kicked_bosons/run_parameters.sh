@@ -1,23 +1,32 @@
 #!/bin/bash
 
 njobs=10
+# Source any environment stuff you need
 source ${HOME}/venv/kicked-boson_qist/bin/activate
+
+# Export any variables that you want the bash function to be able to see
 export exec_folder=${HOME}/GitHub/quantum-chaos/kicked_bosons
 export root_folder=/scratch/NemotoU/henry/quantum-chaos/kicked_bosons
 
+# The parameters you want to parallelize over (can also get this from an external
+# parameter file)
 M_arr=(300)
 num_ensembles_arr=(100)
 thetaOmega_arr=$(seq 0 0.2 20)
 WOmega_arr=$(seq 1 0.1 9)
-    
+
+# The shell script function GNU-parallel calls  
 bosons() {
+  # $1,$2,$3, etc are the parameters parallel passes, in the order you give them
   M=$1
   num_ensembles=$2
   thetaOmega=$3
   WOmega=$4
-    
+  
+  # stdout and stderr get redirected to this file
   outfile=bosons_M${M}_num_ensembles${g}_thetaOmega${thetaOmega}_WOmega${WOmega}.out
 
+  # This is basically the program I call, with the parameters I set
   python3 -u ${exec_folder}/make_data.py \
     -M ${M} \
     -num_ensembles ${num_ensembles} \
@@ -28,6 +37,7 @@ bosons() {
     -save_data 1 \
 	  &> ${outfile}
 }
+# You must export the function for the shell script to know about it
 export -f bosons
 
 # Run in parallel using GNU parallel

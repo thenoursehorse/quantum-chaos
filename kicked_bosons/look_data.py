@@ -20,7 +20,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=description)
     parser.add_argument('-M', type=int, default=300)
-    parser.add_argument('-num_ensembles', type=int, default=10)
+    parser.add_argument('-num_ensembles', type=int, default=100)
     parser.add_argument('-root_folder', type=str, default='./')
     
     parser.add_argument('-thetaOmega_min', type=float, default=0)
@@ -91,11 +91,12 @@ if __name__ == '__main__':
     plt.clabel(ct, fmt=fmt, colors='k')
         
     axis[0].set_xlim(xmin=thetaOmega_arr[0], xmax=thetaOmega_arr[-1])
-    axis[0].set_xticks(np.linspace(thetaOmega_arr[0], thetaOmega_arr[1], 6))
+    axis[0].set_xticks(np.linspace(thetaOmega_arr[0], thetaOmega_arr[-1], 6))
     axis[0].set_ylim(ymin=WOmega_arr[0], ymax=WOmega_arr[-1])
     axis[0].set_yticks(np.linspace(WOmega_arr[0], WOmega_arr[-1], 5))
-    axis[0].set_xlabel(r'$theta/(16\Omega)$')
-    axis[0].set_ylabel(r'$W/(16/Omega)$')
+    axis[0].tick_params(axis=u'both', which=u'both',length=0)
+    axis[0].set_xlabel(r'$16 \theta \Phi$')
+    axis[0].set_ylabel(r'$16 W \Phi$')
 
     ticks = np.linspace(poiss, goe, 6)
     cbar = fig.colorbar(c, ax=axis[0], ticks=ticks, pad=0.01, format=lambda x, _: f"{x:.2f}")
@@ -105,10 +106,10 @@ if __name__ == '__main__':
     
     # Places to mark (but GUE or GSE never fully follows the r spectrum !)
     # FIXME
-    #plot.line(x=7.2, y=0.2, color='black', marker='o', ax_idx=0) # GOE
-    #plot.line(x=20, y=0.34, color='black', marker='^', ax_idx=0) # GUE
-    #plot.line(x=22, y=0.21, color='black', marker='v', ax_idx=0) # GSE
-    #plot.line(x=45, y=0.8, color='black', marker='*', ax_idx=0) # GOE
+    plot.line(x=7.4, y=2, color='black', marker='o', ax_idx=0) # GOE
+    axis[0].plot(7.4, 7, color='deeppink', marker='^', clip_on=False, zorder=100) # POISS
+    plot.line(x=18, y=3, color='black', marker='v', ax_idx=0) # deep into GOE
+    plot.line(x=7.4, y=3.5, color='black', marker='*', ax_idx=0) # crossover
     
     #WOmega_val = 2
     #idx = np.where(np.abs(WOmega_arr - WOmega_val) < 1e-10)[0][0]

@@ -38,14 +38,13 @@ def delta_wj(N, j, Omega=2, scale_N=True):
     else:
         return 4.0 * Omega * (j - N/2.0)**2
 
-def delta_wj_fast(x, Omega=2, scale_N=True):
+def delta_wj_fast(j_arr, Omega=2, scale_N=True):
+    N = len(j_arr)
     if scale_N:
-        N = len(x)
-        #return (4.0 * Omega / N) * x
-        return (4.0 * Omega / N**2) * x
+        return (4.0 * Omega / N**2) * (j_arr - N/2.0)**2
     else:
         # NOTE omega = 0.01 = GSE statistics
-        return Omega * x
+        return Omega * (j_arr - N/2.0)**2
 
 class KickedBosons(GenericSystem):
     def __init__(self, M,
@@ -55,6 +54,7 @@ class KickedBosons(GenericSystem):
                        theta_disorder=0,
                        phi_disorder=0,
                        eta_disorder=0,
+                       T=1,
                        excitations=1,
                        num_modes=2,
                        periodic=False,
@@ -70,6 +70,7 @@ class KickedBosons(GenericSystem):
         self._theta_disorder = theta_disorder
         self._phi_disorder = phi_disorder
         self._eta_disorder = eta_disorder
+        self._T = T
         self._excitations = excitations
         self._num_modes = num_modes
         self._periodic = periodic
@@ -80,6 +81,8 @@ class KickedBosons(GenericSystem):
         self._remove_vac = True
         
         super().__init__(**kwargs)
+        self._model = 'Kicked rotor'
+        self._rng = np.random.default_rng()
         self.run()
 
     def run(self):
@@ -87,8 +90,8 @@ class KickedBosons(GenericSystem):
             self.make_operators()
         self._U = [self.make_unitary() for _ in range(self._num_ensembles)]
         self._d = self._U[0].shape[0]
-        self._eigenenergies = []
-        self._eigenvectors = []
+        #self._eigenenergies = []
+        #self._eigenvectors = []
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
         self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
         for m in range(self._num_ensembles):
@@ -120,13 +123,13 @@ class KickedBosons(GenericSystem):
         #e, v = np.linalg.eigh(H_eff.todense())
         
         if self._use_qutip: 
-            e, v = np.linalg.eig(U.full())
+            e, v = np.linalg.eig(U.full()) # qutip object to dense numpy array 
             #e, v_qt = U.eigenstates()
             #v = np.empty(shape=(self.d, self.d), dtype=np.complex_)
             #for j in range(self.d):
             #    v[:,j] = v_qt[j].full().flatten()
         else:
-            e, v = np.linalg.eig(U.todense())
+            e, v = np.linalg.eig(U.todense()) # scipy sparse to dense numpy array
         
         ev = -1 * np.angle( e ) / self._T
 
@@ -148,19 +151,17 @@ class KickedBosons(GenericSystem):
         self._num_Op = [self._destroy_Op[j].dag() * self._destroy_Op[j] for j in range(self._M)]
     
     def make_unitary(self):
-        rng = np.random.default_rng()
-
         # Phases specifying hopping
         theta_list = self._theta * np.ones(self._M)
-        theta_list += self._theta_disorder * rng.uniform(-1, 1, self._M)
+        theta_list += self._theta_disorder * self._rng.uniform(-1, 1, self._M)
             
         # Phases specifying trapping potential with noise
         phi_list = delta_wj_fast(np.arange(1, self._M+1), self._Omega)
-        phi_list += self._phi_disorder * rng.uniform(-1, 1, self._M)
+        phi_list += self._phi_disorder * self._rng.uniform(-1, 1, self._M)
 
         # Time reversal symmetry breaking on hopping
         eta_list = self._eta * np.ones(self._M)
-        eta_list += self._eta_disorder * rng.uniform(-1, 1, self._M)
+        eta_list += self._eta_disorder * self._rng.uniform(-1, 1, self._M)
         
         if self._use_qutip:
             U2 = hopping_unitary(M=self._M, theta_list=theta_list, eta_list=eta_list, b_list=self._destroy_Op, periodic=self._periodic)
@@ -176,16 +177,19 @@ class KickedBosons(GenericSystem):
 
         else:
             # Phase shift angles
-            U1 = scipy.sparse.csc_array( np.diag(phi_list) )
+            #U1 = scipy.sparse.csc_array( np.diag(phi_list) )
+            U1 = scipy.sparse.lil_array( np.diag(phi_list) )
+            #U1 = scipy.sparse.coo_array( np.diag(phi_list) )
             
             # Multi-port beam splitter
             
             # with TR symmetry breaking like Victor does (I don't think it does anything)
             OffDiagBand = theta_list[:self._M-1] * np.exp(1j*eta_list[:self._M-1])
-            U2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            #U2 = scipy.sparse.coo_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            U2 = scipy.sparse.lil_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
             
             if self._periodic:
-                U2 = H2.tolil()
+                #U2 = U2.tolil()
                 U2[0,-1] = theta_list[-1] * np.exp(1j*eta_list[-1])
                 U2[-1,0] = (theta_list[-1] * np.exp(1j*eta_list[-1])).conj()
             
@@ -196,12 +200,28 @@ class KickedBosons(GenericSystem):
             #    U2 = U2.tolil()
             #    something here to handle it
             
-            U2 = U2.tocsc()
+            #U2 = U2.tocsc()
+            #U2 = U2.tolil()
             
             U = scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)
+            #U = (scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)).tolil()
 
-        return U 
-    
+        return U
+
+    #def make_unitary(self):
+        #import qutip as qt
+        # CUE
+        #return scipy.sparse.csc_array( qt.random_objects.rand_unitary(self._N).full() )
+        # Poisson
+        #return scipy.sparse.csc_array( qt.random_objects.rand_unitary(self._N, distribution='exp').full() )
+        # Poisson
+        #H = scipy.sparse.csc_array( qt.random_objects.rand_herm(self._N).full() )
+        #return scipy.sparse.linalg.expm(-1j*H*self._T)
+        #H = scipy.sparse.csc_array( scipy.stats.ortho_group.rvs(self._N) )
+        #return scipy.sparse.linalg.expm(-1j*H*self._T)
+        #H = scipy.sparse.csc_array( scipy.stats.unitary_group.rvs(self._N) )
+        #return scipy.sparse.linalg.expm(-1j*H*self._T)
+
     @property
     def U(self):
         return self._U

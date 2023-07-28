@@ -41,7 +41,13 @@ if __name__ == '__main__':
                        folder=folder,
                       )
     end = time.time()
-    print("Unitary construction took", end-start)
+    print("Hamiltonian construction took", end-start)
+    
+    start = time.time()
+    model.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
+    end = time.time()
+    print("Unfolding energies took", end-start)
+    
     start = time.time()
     model.set_spectral_functions(Ti=Ti, Tf=Tf, Nt=Nt)
     end = time.time()
@@ -50,9 +56,7 @@ if __name__ == '__main__':
     # This is to calculate the frame potential for the ensemble
     # rather than the Haar averaged frame potential. It is expensive
     start = time.time()
-    model.set_unitary_evolve(num_ensembles=10, Ti=Ti, Tf=Tf, Nt=Nt)
-    #model.set_unitary_evolve(num_ensembles=None, Ti=Ti, Tf=Tf, Nt=Nt)
-    #model.set_unitary_evolve(Ti=Ti, Tf=Tf, Nt=Nt)
+    model.set_unitary_evolve(num_ensembles=args.num_ensembles, Ti=Ti, Tf=Tf, Nt=Nt)
     end = time.time()
     print("Time evolve unitaries took", end-start)
         
@@ -78,21 +82,23 @@ if __name__ == '__main__':
     model.set_fractal_dimension_state()
     end = time.time()
     print("Fractal dimension state took", end-start)
+        
+    start = time.time()
+    success_all, elements_all_t = model.check_submatrix()
+    print("Gaussian after:", np.where(success_all > 0)[0])
+    end = time.time()
+    print("Submatrix took", end-start)
             
-    #start = time.time()
-    #model.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
-    #end = time.time()
-    #print("Unfolding energies took", end-start)
-    
     # Plots
     if args.save_plots or args.show_plots:
         start = time.time()
         model.plot_eigenenergies(save=args.save_plots, show=args.show_plots)
+        model.plot_unfolded_eigenenergies(save=args.save_plots, show=args.show_plots)
         model.plot_ratios(save=args.save_plots, show=args.show_plots)
         model.plot_fractal_dimension(save=args.save_plots, show=args.show_plots)
         model.plot_spectral_functions(save=args.save_plots, show=args.show_plots)
-        model.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, non_haar=True)
         model.plot_loschmidt_echo(save=args.save_plots, show=args.show_plots)
+        model.plot_frame_potential(save=args.save_plots, show=args.show_plots, window=0, non_haar=True)
         model.plot_fractal_dimension_state(save=args.save_plots, show=args.show_plots)
         model.plot_survival_probability(psi, save=args.save_plots, show=args.show_plots)
         end = time.time()

@@ -1,3 +1,5 @@
+import atexit
+
 #import numpy as np
 import seaborn as sns
 #from scipy.optimize import curve_fit
@@ -44,10 +46,12 @@ class Plotter(object):
 
         self._set_figure(N_figs=self._N_figs)
 
-    def __del__(self):
-        self.finish()
+        atexit.register(self.__close)
+
+    #def __del__(self):
+    #    self.finish()
     
-    def finish(self):
+    def __close(self):
         if self._save:
             self._fig.savefig(f'{self._save_root}/{self._save_filename}')
         if self._show:
@@ -131,24 +135,34 @@ class Plotter(object):
     def fill_betweeny(self, x, y_lower, y_upper, ax_idx=None, color='black', label=None, alpha=0.1):
         if ax_idx is None:
             ax_idx = 0
-        self._axis[ax_idx].fill_between(x, y_lower, y_upper, alpha=alpha, color=color, label=label)
+        self._axis[ax_idx].fill_between(x, y_lower, y_upper, alpha=alpha, color=color, label=label, linewidth=0.0)
     
     def fill_betweenx(self, y, x_lower, x_upper, ax_idx=None, color='black', label=None, alpha=0.25):
         if ax_idx is None:
             ax_idx = 0
-        self._axis[ax_idx].fill_betweenx(y, x_lower, x_upper, alpha=alpha, color=color, label=label)
+        self._axis[ax_idx].fill_betweenx(y, x_lower, x_upper, alpha=alpha, color=color, label=label, linewidth=0.0)
     
-    def histplot(self, x, ax_idx=None, color=None, label=None, alpha=0.25):
+    def histplot(self, x, ax_idx=None, color=None, label=None, alpha=0.25, bins='auto'):
         if ax_idx is None:
             ax_idx = 0
         data = {'x': x.flatten()}
-        sns.histplot(data=data, x='x', stat='density', bins='auto', alpha=alpha, label=label, ax=self._axis[ax_idx], color=color) 
+        sns.histplot(data=data, x='x', stat='density', bins=bins, alpha=alpha, label=label, ax=self._axis[ax_idx], color=color) 
     
-    def colormesh(self, x, y, z, ax_idx=None, vmin=0, vmax=1, shading='auto'):
+    def colormesh(self, x, y, z, ax_idx=None, vmin=0, vmax=1, shading='auto', rasterized=True, colorbar=None, cmap=None):
         sns.despine(ax=self._axis[ax_idx], top=True, right=True, left=True, bottom=True)
         if ax_idx is None:
             ax_idx = 0
-        return self._axis[ax_idx].pcolormesh(x, y, z.T, vmin=vmin, vmax=vmax, shading=shading)
+        plot_image = self._axis[ax_idx].pcolormesh(x, y, z.T, vmin=vmin, vmax=vmax, shading=shading, rasterized=rasterized, cmap=cmap)
+        if colorbar is not None:
+            if isinstance(colorbar, bool):
+                cb = self._fig.colorbar(plot_image, orientation='vertical', pad=0.01, ax=self._axis[ax_idx])
+            else:
+                cb = self._fig.colorbar(plot_image, orientation='horizontal', pad=0.01, ax=self._axis[ax_idx])
+            cb.outline.set_visible(False)
+            cb.ax.tick_params(width=0)
+            return plot_image, cb
+        else:
+            return plot_image
     
     @property
     def fig(self):

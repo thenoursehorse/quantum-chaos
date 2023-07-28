@@ -12,20 +12,19 @@ class Pauli3Body(GenericSystem):
         self._dims = [2 for _ in range(self._N)]
 
         super().__init__(**kwargs)
+        self._model = 'Pauli 3body'
         self.run()
 
     def run(self):
         self.make_operators()
         self._H = [self.make_H() for _ in range(self._num_ensembles)]
-        self._eigenenergies = []
-        self._eigenvectors = []
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
         self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
         for m in range(self._num_ensembles):
             self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._H[m])
 
     def make_eigenenergies(self, H):
-        return np.linalg.eigh(H.full())
+        return np.linalg.eigh(H.full()) # qutip object to dense numpy array 
     
     def make_operators(self):
         from quantum_chaos.quantum.operators import get_sigma_ops
