@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=description)
     parser.add_argument('-M', type=int, default=300)
-    parser.add_argument('-num_ensembles', type=int, default=10)
+    parser.add_argument('-num_ensembles', type=int, default=100)
     
     parser.add_argument('-thetaOmega', type=float, default=7.4)
     parser.add_argument('-thetaOmega_disorder', type=float, default=0.0)
