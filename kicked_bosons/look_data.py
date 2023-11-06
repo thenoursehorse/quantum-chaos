@@ -9,8 +9,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
-from quantum_chaos.quantum.system import GenericSystemData
-from quantum_chaos.plotter import Plotter
+from quantum-chaos.quantum.system import GenericSystemData
+from quantum-chaos.plotter import Plotter
 
 if __name__ == '__main__':
     description = textwrap.dedent('''\

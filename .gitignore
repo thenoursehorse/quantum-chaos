@@ -133,3 +133,4 @@ figs/
 data/
 
 .DS_Store
+src/quantum_chaos/version.py

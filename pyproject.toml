@@ -1,9 +1,9 @@
 [project]
 name = "quantum-chaos"
-version = "0.0.3"
-description = "Dynamics and measures quantum chaos models."
+dynamic = ["version"]
+description = "Dynamics of and measures of quantum chaos models."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 keywords = ["quantum", "classical", "chaos", "boson", "spin", "ising"]
 authors = [
@@ -26,8 +26,11 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/thenoursehorse/quantum-chaos"
 
-[tool.setuptools]
-
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/quantum_chaos/version.py"
+version.fallback-version = "0.0.4"
