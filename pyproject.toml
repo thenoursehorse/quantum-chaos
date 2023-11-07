@@ -3,7 +3,7 @@ name = "quantum-chaos"
 dynamic = ["version"]
 description = "Dynamics of and measures of quantum chaos models."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.7"
 license = {file = "LICENSE"}
 keywords = ["quantum", "classical", "chaos", "boson", "spin", "ising"]
 authors = [
