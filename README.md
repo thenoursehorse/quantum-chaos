@@ -7,7 +7,7 @@ Installation
 
 1. Update packaging softare
     ```
-    python3 -m pip install --upgrade pip setuptools wheel
+    python3 -m pip install --upgrade pip
     ```
 
 1. (Optional) Create a 
@@ -37,7 +37,7 @@ Dependencies
 * scipy
 * seaborn
 * h5py
-* (Optional) qutip for creating the systems. Note that the GenericSystem class assumes 
+* qutip for creating the systems. Note that the GenericSystem class assumes 
 that eigenvectors and eigenvalues are numpy arrays.
 
 Examples
