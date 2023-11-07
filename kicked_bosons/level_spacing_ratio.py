@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('-root_folder', type=str, default='./')
     parser.add_argument('-save_plots', type=int, default=0)
     parser.add_argument('-show_plots', type=int, default=1)
-    parser.add_argument('-save_data', type=int, default=0)
+    parser.add_argument('-save_data', type=int, default=1)
     args = parser.parse_args()
     print(vars(args))
         
@@ -85,9 +85,9 @@ if __name__ == '__main__':
         
     if args.save_plots or args.show_plots:
         model.plot_eigenenergies(save=args.save_plots, show=args.show_plots, ylabel=r'$\xi_{\alpha}$', xlabel=r'$\alpha$')
-        model.plot_unfolded_eigenenergies(save=args.save_plots, show=args.show_plots, ylabel=r'$\bar{\xi}_{\alpha}$', xlabel=r'$\alpha$')
         model.plot_ratios(save=args.save_plots, show=args.show_plots, scale_width=args.scale_width)
-        model.plot_spacings(save=args.save_plots, show=args.show_plots)
+        #model.plot_unfolded_eigenenergies(save=args.save_plots, show=args.show_plots, ylabel=r'$\bar{\xi}_{\alpha}$', xlabel=r'$\alpha$')
+        #model.plot_spacings(save=args.save_plots, show=args.show_plots)
         
     if args.save_data:
         r_avg, r_err, r_I = model.average_level_ratios()

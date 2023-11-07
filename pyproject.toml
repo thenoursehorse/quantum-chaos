@@ -33,4 +33,4 @@ build-backend = "hatchling.build"
 [tool.hatch]
 version.source = "vcs"
 build.hooks.vcs.version-file = "src/quantum_chaos/version.py"
-version.fallback-version = "0.0.4"
+version.fallback-version = "0.0.0"
