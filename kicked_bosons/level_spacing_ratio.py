@@ -78,10 +78,10 @@ if __name__ == '__main__':
     end = time.time()
     print("Unitary construction took", end-start)
     
-    start = time.time()
-    model.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
-    end = time.time()
-    print("Unfolding energies took", end-start)
+    #start = time.time()
+    #model.unfold_energies(save=args.save_plots, show=args.show_plots, plot=True)
+    #end = time.time()
+    #print("Unfolding energies took", end-start)
         
     if args.save_plots or args.show_plots:
         model.plot_eigenenergies(save=args.save_plots, show=args.show_plots, ylabel=r'$\xi_{\alpha}$', xlabel=r'$\alpha$')
