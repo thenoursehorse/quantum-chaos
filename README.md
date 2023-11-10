@@ -39,6 +39,9 @@ Dependencies
 * h5py
 * qutip for creating the systems. Note that the GenericSystem class assumes 
 that eigenvectors and eigenvalues are numpy arrays.
+* statsmodels
+* KEpy
+* scikit-learn
 
 Examples
 ---------------

@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('-root_folder', type=str, default='./')
     parser.add_argument('-save_plots', type=int, default=0)
     parser.add_argument('-show_plots', type=int, default=1)
-    parser.add_argument('-save_data', type=int, default=1)
+    parser.add_argument('-save_data', type=int, default=0)
     args = parser.parse_args()
     print(vars(args))
         
