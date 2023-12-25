@@ -69,6 +69,11 @@ class GenericSystem(object):
         #    ratios[n] = r(np.sort(self._eigenenergies),n)
         #return ratios
 
+    def heisenberg_time(self, hbar=1):
+        s = self.level_spacings()
+        s_avg = np.mean(s)
+        return 2 * np.pi * hbar / s_avg
+
     def average_level_ratios(self):
         r = self.level_ratios()
         r_avg = np.mean(r, axis=1)

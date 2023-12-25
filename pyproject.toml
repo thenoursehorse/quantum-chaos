@@ -15,9 +15,11 @@ dependencies = [
   "h5py",
   "seaborn",
   "qutip",
+  "randomgen",
   "statsmodels",
   "KDEpy",
   "scikit-learn",
+  "scikit-rmt",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

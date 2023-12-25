@@ -59,6 +59,8 @@ class KickedBosons(GenericSystem):
                        num_modes=2,
                        periodic=False,
                        use_qutip=False,
+                       calc_H_eff=False,
+                       calc_eigenvectors=True,
                        **kwargs):
     
         
@@ -83,20 +85,23 @@ class KickedBosons(GenericSystem):
         super().__init__(**kwargs)
         self._model = 'Kicked rotor'
         self._rng = np.random.default_rng()
-        self.run()
+        self.run(calc_eigenvectors=calc_eigenvectors, calc_H_eff=calc_H_eff)
 
-    def run(self):
+    def run(self, calc_eigenvectors=True, calc_H_eff=False):
         if self._use_qutip:
             self.make_operators()
         self._U = [self.make_unitary() for _ in range(self._num_ensembles)]
         self._d = self._U[0].shape[0]
-        #self._eigenenergies = []
-        #self._eigenvectors = []
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
-        self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
-        for m in range(self._num_ensembles):
-            self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
-        self.make_H_eff()
+        if calc_eigenvectors:
+            self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
+            for m in range(self._num_ensembles):
+                self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
+        else:
+            for m in range(self._num_ensembles):
+                self._eigenenergies[m] = self.make_eigenenergies(self._U[m], return_vecs=False)
+        if calc_H_eff:
+            self.make_H_eff()
 
     def make_H_eff(self, U=None):
         if U is None:
@@ -111,9 +116,9 @@ class KickedBosons(GenericSystem):
             if self._use_qutip:
                 return 1j * U.logm() / self._T
             else:
-                return 1j * scipy.linalg.logm(U.todense()) / self._T
+                return 1j * scipy.linalg.logm(U) / self._T
 
-    def make_eigenenergies(self, U):
+    def make_eigenenergies(self, U, return_vecs=True):
         #eigenenergies = H_eff.eigenenergies() # qutip
         #return eigenenergies
         
@@ -123,13 +128,19 @@ class KickedBosons(GenericSystem):
         #e, v = np.linalg.eigh(H_eff.todense())
         
         if self._use_qutip: 
-            e, v = np.linalg.eig(U.full()) # qutip object to dense numpy array 
+            if return_vecs:
+                e, v = np.linalg.eig(U.full()) # qutip object to dense numpy array 
+            else:
+                e = np.linalg.eigvals(U.full())
             #e, v_qt = U.eigenstates()
             #v = np.empty(shape=(self.d, self.d), dtype=np.complex_)
             #for j in range(self.d):
             #    v[:,j] = v_qt[j].full().flatten()
         else:
-            e, v = np.linalg.eig(U.todense()) # scipy sparse to dense numpy array
+            if return_vecs:
+                e, v = np.linalg.eig(U)
+            else:
+                e = np.linalg.eigvals(U)
         
         ev = -1 * np.angle( e ) / self._T
 
@@ -139,7 +150,11 @@ class KickedBosons(GenericSystem):
         #ev = ev % (2*np.pi*(1/self._T))
 
         ind = ev.argsort()
-        return ev[ind], v[:,ind] 
+        
+        if return_vecs:
+            return ev[ind], v[:,ind]
+        else:
+            return ev[ind]
     
     def make_operators(self):
         '''
@@ -178,8 +193,8 @@ class KickedBosons(GenericSystem):
         else:
             # Phase shift angles
             #U1 = scipy.sparse.csc_array( np.diag(phi_list) )
-            U1 = scipy.sparse.lil_array( np.diag(phi_list) )
             #U1 = scipy.sparse.coo_array( np.diag(phi_list) )
+            U1 = scipy.sparse.lil_array( np.diag(phi_list) )
             
             # Multi-port beam splitter
             
@@ -203,7 +218,10 @@ class KickedBosons(GenericSystem):
             #U2 = U2.tocsc()
             #U2 = U2.tolil()
             
-            U = scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)
+            # Exponentiation makes this dense (unless have lots of -inf values), so we might as well store it as dense
+            U = (scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)).todense()
+            
+            #U = scipy.sparse.linalg.expm(-1j*U2.tocsc()) @ scipy.sparse.linalg.expm(-1j*U1.tocsc())
             #U = (scipy.sparse.linalg.expm(-1j*U2) @ scipy.sparse.linalg.expm(-1j*U1)).tolil()
 
         return U

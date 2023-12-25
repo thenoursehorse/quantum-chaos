@@ -9,8 +9,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
-from quantum-chaos.quantum.system import GenericSystemData
-from quantum-chaos.plotter import Plotter
+from quantum_chaos.quantum.system import GenericSystemData
+from quantum_chaos.plotter import Plotter
 
 if __name__ == '__main__':
     description = textwrap.dedent('''\
@@ -34,13 +34,14 @@ if __name__ == '__main__':
     parser.add_argument('-sigma', type=float, default=5)
     parser.add_argument('-use_filter', type=int, default=1)
     
+    parser.add_argument('-save_root', type=str, default='./')
     parser.add_argument('-save_plots', type=int, default=0)
     parser.add_argument('-show_plots', type=int, default=1)
     args = parser.parse_args()
     print(vars(args))
     
     plot = Plotter(N_figs=1,
-                   save_root=f'{args.root_folder}/data/M{args.M}_Nsamp{args.num_ensembles}/', 
+                   save_root=args.save_root,
                    save_filename='r_avg.pdf', 
                    show=args.show_plots, save=args.save_plots,
                    use_tics=True)

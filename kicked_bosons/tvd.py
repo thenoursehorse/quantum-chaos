@@ -1,5 +1,11 @@
 import time
 import numpy as np
+from scipy.linalg import cholesky
+import scipy
+import scipy.special
+
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
 import os
 import argparse
@@ -7,13 +13,101 @@ import textwrap
 
 from quantum_chaos.quantum.kicked_bosons import KickedBosons
 from quantum_chaos.quantum.system import GenericSystemData
-from quantum_chaos.functions import golden_ratio
+from quantum_chaos.plotter import SeabornFig2Grid
+
+from copy import deepcopy
+
+def vec(A):
+    '''
+    Mathematical vectorization procedure on a matrix. Assumes the 
+    last two dimensions of A are the matrix dimensions.
+    '''
+    p = A.shape[-2]
+    q = A.shape[-1]
+    return A.reshape(-1, p*q)
+
+def mle_adjust(n, sigma_squared, S):
+    eta = S[0,0] / (n*sigma_squared)
+    S = S / S[0,0]
+    S[1:,1:] = eta * S[1:,1:] + (1 - eta) * np.outer(S[0,1:], S.conj()[1:,0])
+    return S
+
+def mle_MNorm(X, iterations=10000, tol=1e-10, unscale=True):
+    '''
+    Determine the maximum liklihood error (MLE) estimates for the center, mu, 
+    and covariance matrices, Sigma_s and Sigma_c, for a (complex) normal 
+    matrix-variate sample distribution.
+    '''
+    n = X.shape[0]
+    p = X.shape[1]
+    q = X.shape[2]
+
+    # Initialize guessed parameters
+    mu = np.zeros([p, q])
+    sigma_squared = 0
+    Sigma_s = np.eye(p)
+    Sigma_c = np.eye(q)
+        
+    # Self consistently find maximum liklihood estimate (MLE) of parameters
+    converged = False
+    for t in range(iterations):
+        delta = X - mu
+
+        # Mean estimate 
+        mu_new = np.sum(X, axis=0)
+
+        Sigma_s_inv = np.linalg.inv(Sigma_s)
+        Sigma_c_inv = np.linalg.inv(Sigma_c)
+
+        # Covariance matrix estimates
+        Sigma_c_new = np.sum( np.swapaxes(delta.conj(), axis1=-1, axis2=-2) @ Sigma_s_inv @ delta, axis=0)
+        Sigma_s_new = np.sum( delta @ Sigma_c_inv @ np.swapaxes(delta.conj(), axis1=-1, axis2=-2), axis=0)
+    
+        # Overall covariance scaling factor
+        sigma_squared_new = np.sum(vec(delta.conj()) * vec( Sigma_s_inv @ Sigma_c_inv @ delta ) )
+        
+        # Scale matrices
+        mu_new = mu_new / n
+        sigma_squared_new = sigma_squared_new / (p*q*n)
+        Sigma_c_new = mle_adjust(p*n, sigma_squared_new, Sigma_c_new)
+        Sigma_s_new = mle_adjust(q*n, sigma_squared_new, Sigma_s_new)
+        
+        # Check 1-norm tolerance
+        norm = 0
+        norm += np.linalg.norm((mu_new - mu).ravel(), ord=1) / np.linalg.norm(mu.ravel(), ord=1)
+        norm += np.linalg.norm((Sigma_c_new - Sigma_c).ravel(), ord=1) / np.linalg.norm(Sigma_c.ravel(), ord=1)
+        norm += np.linalg.norm((Sigma_s_new - Sigma_s).ravel(), ord=1) / np.linalg.norm(Sigma_s.ravel(), ord=1)
+        norm += np.sum( np.abs(sigma_squared_new - sigma_squared) ) / np.sum( np.abs(sigma_squared) )
+        if norm < tol:
+            converged = True
+
+        # Backup guess
+        mu = deepcopy(mu_new)
+        sigma_squared = deepcopy(sigma_squared_new)
+        Sigma_c = deepcopy(Sigma_c_new)
+        Sigma_s = deepcopy(Sigma_s_new)
+
+        if converged:
+            break
+    
+    if converged:
+        print("Normal matrix-variate parameter estimation converged after", t, "iterations with tolerance", norm)
+    else:
+        print("Normal matrix-variate parameter estimation NOT converged after", t, "iterations with tolerance", norm)
+
+    if unscale:
+        return mu, Sigma_s * np.sqrt(sigma_squared), Sigma_c * np.sqrt(sigma_squared), sigma_squared
+    else:
+        return mu, Sigma_s, Sigma_c, sigma_squared
+
+def transform_standard_MNorm(X, mu, Sigma_s, Sigma_c):
+    A = cholesky(np.linalg.inv(Sigma_s), lower=False)
+    B = cholesky(np.linalg.inv(Sigma_c), lower=True)
+    C = - A @ mu @ B
+    return A @ X @ B + C
 
 def domain_unit_circle(x):
-    # integration domain: sum of x^2 <= 1. 
-    # For 2d, it's a unit circle; for 3d it's a unit sphere, etc
     # returns True for inside domain, False for outside
-    
     return np.power(x,2).sum() <= 1
 
 def domain_hypercube(x):
@@ -58,7 +152,6 @@ if __name__ == '__main__':
     parser.add_argument('-WOmega', type=float, default=2)
     
     parser.add_argument('-etaOmega', type=float, default=0)
-    #parser.add_argument('-etaOmega', type=float, default=golden_ratio())
     parser.add_argument('-etaOmega_disorder', type=float, default=0)
     
     parser.add_argument('-T', type=float, default=1)
@@ -73,6 +166,11 @@ if __name__ == '__main__':
     parser.add_argument('-save_plots', type=int, default=0)
     parser.add_argument('-show_plots', type=int, default=1)
     parser.add_argument('-save_data', type=int, default=0)
+    
+    parser.add_argument('-kde1', type=int, default=0)
+    parser.add_argument('-kde2', type=int, default=0)
+    parser.add_argument('-tvd1', type=int, default=0)
+    parser.add_argument('-tvd2', type=int, default=0)
     args = parser.parse_args()
     print(vars(args))
         
@@ -92,16 +190,6 @@ if __name__ == '__main__':
     if args.save_plots:
         print(f"Saving plots to folder '{folder}'")
 
-    #time_arr = np.array([300])
-    time_arr = np.array([300])
-        
-    t_idx = -1 #299
-    ix = 0
-    iy = 0 #199
-    stride = args.N
-    vmax_abs = 0.3 # 0.2
-    m = -1
-
     start = time.time()
     model = KickedBosons(M=args.M,
                          num_ensembles=args.num_ensembles,
@@ -120,45 +208,123 @@ if __name__ == '__main__':
     end = time.time()
     print("Unitary construction took", end-start)
     
+    # Set time to Heisenberg time
+    t_heis = model.heisenberg_time()
+    time_arr = np.array([t_heis])
+    #time_arr = np.array([1000])
+        
+    t_idx = -1 #299
+    ix = 0
+    iy = 0 #199
+    stride = args.N
+    vmax_abs = 0.3 # 0.2
+    m = -1
+    
     start = time.time()
     model.set_unitary_evolve(num_ensembles=args.num_ensembles, time=time_arr)
     #model.set_unitary_evolve_floquet(num_ensembles=args.num_ensembles, time=time_arr)
     end = time.time()
     print("Time evolve unitaries took", end-start)
 
-    samples = model._Ut[t_idx][:, ix:ix+stride, iy:iy+stride]
-    samples = samples.reshape((samples.shape[0], -1)) # flatten each matrix into a vector
-    #H, edges = np.histogramdd(r, bins=10) # bins = 10 # Doesn't work for large number of random variables (like 25)
+    # Take upper left corner of unitaries
+    samples = model._Ut[t_idx][:, ix:ix+stride, iy:iy+stride] * np.sqrt(args.M)
 
-    # Normalized covariance matrix
-    #cov = np.cov(samples.real.T)
-    cov = np.corrcoef(samples.real.T)
+    # Get the standard normal distribution
+    # Real case
+    #from scipy.stats import multivariate_normal
+    #n = 100
+    #rvs_norm = multivariate_normal.rvs(cov=np.eye(args.N*args.N), size=n).reshape(n, args.N, args.N)
+    
+    # Real case should be same as above
+    #rng = np.random.default_rng()
+    #n = 100
+    #rvs_norm = rng.standard_normal(size=(n, args.N, args.N))
 
-    # Standardize data?
-    from sklearn.preprocessing import StandardScaler
-    scaler = StandardScaler()
-    samples_scaled = scaler.fit_transform(samples.real)
+    # Complex case 
+    from randomgen import ExtendedGenerator
+    eg = ExtendedGenerator()
+    n = samples.shape[0]
+    n = 1_000_000
+    n = 10000
+    rvs_cnorm = eg.multivariate_complex_normal(loc=[0] * (stride*stride), gamma=np.eye(stride*stride), size=n).reshape(n, stride, stride)
+    samples = eg.multivariate_complex_normal(loc=[0] * (stride*stride), gamma=np.eye(stride*stride), size=n).reshape(n, stride, stride)
 
-    # A normal distribution
-    from scipy.stats import multivariate_normal
-    #rv_normal = multivariate_normal(mean=[0] * (stride*stride), cov=[1] * (stride*stride), allow_singular=False)
-    rv_normal = multivariate_normal(mean=[0] * (stride*stride), cov=cov, allow_singular=False)
-    # Get a sample of data (should be same shape as samples)
-    samples_normal = rv_normal.rvs(args.num_ensembles)
-    # Get the 'empirical' probability at each of the points above using the pdf
-    e_pdf_normal = rv_normal.pdf(samples_normal)
-    # Check covariance matrix
-    cov_normal = np.corrcoef(samples_normal.T)
+    # Complex case should be same as above
+    #rng = np.random.default_rng()
+    #n = 100
+    #rvs_cnorm = rng.normal(scale=1/np.sqrt(2), size=(n, args.N, args.N)) + 1j * rng.normal(scale=1/np.sqrt(2), size=(n, args.N, args.N))
 
-    # NOTE: in asymptotics, bw: h->0 as samples: n->inf. Rate of convergence has to be chosen carefully,
-    # but is usually h \propto n^(-1/5) = n^(-0.2)
-    from statsmodels.nonparametric.kernel_density import KDEMultivariate
-    start = time.time()
-    # bw='cv_ml' bw='normal_reference' # bw=[0.2] * (stride*stride) bw = [np.power(args.num_ensembles, -0.2)] * (stride*stride)
-    kde1 = KDEMultivariate(data=samples_scaled, var_type='c' * (stride*stride), bw='cv_ml')
-    end = time.time()
-    print("statsmodels kde took", end-start)
+    # Find maximum liklihood estimates (MLE) of the matrix normal parameter
+    # which assumes that matrices are matrix normal
+    mu, Sigma_s, Sigma_c, sigma_squared = mle_MNorm(samples)
+    mu_cnorm, Sigma_s_cnorm, Sigma_c_cnorm, sigma_squared_cnorm = mle_MNorm(rvs_cnorm)
+    
+    # Transform samples to standard normal (just assume that the data is normal, even if it is not)
+    samples_transformed = transform_standard_MNorm(samples, mu, Sigma_s, Sigma_c)
+    mu_transformed, Sigma_s_transformed, Sigma_c_transformed, sigma_squared_transformed = mle_MNorm(samples_transformed)
+    rvs_cnorm_transformed = transform_standard_MNorm(rvs_cnorm, mu_cnorm, Sigma_s_cnorm, Sigma_c_cnorm)
+    
+    # Take SVD of relevant samples
+    #samples = samples_transformed
+    #samples_S = np.linalg.svd( samples_transformed, compute_uv=False)**2
+    samples_S, _ = np.linalg.eigh(samples_transformed @ np.swapaxes(samples_transformed.conj(), axis1=-1, axis2=-2))
+    rvs_cnorm_S, _ = np.linalg.eigh(rvs_cnorm_transformed @ np.swapaxes(rvs_cnorm_transformed.conj(), axis1=-1, axis2=-2))
+    #H, edges = np.histogramdd(samples_S, bins=10) # bins = 10 # Doesn't work for large number of random variables (like 25)
 
+#    print("START")
+#    rng = np.random.default_rng()
+#    W_mean = []
+#    W_S = []
+#    W_S_mean = []
+#    n_arr = np.array([100, 1000, 10000, 100000]) #, 1000000, 10000000, 100000000])
+#    for i, n in enumerate(n_arr):
+#        A = rng.normal(scale=1/np.sqrt(2), size=(n, args.N, args.N)) + 1j * rng.normal(scale=1/np.sqrt(2), size=(n, args.N, args.N))
+#        #A = rng.normal(size=(n, args.N, args.N)) # WISHART distribution
+#        W = A @ np.swapaxes(A.conj(), axis1=-1, axis2=-2 )
+#        W_mean.append( np.mean(W, axis=0) )
+#        e, v = np.linalg.eigh(W)
+#        W_S.append( e )
+#        W_S_mean.append( np.mean(W_S[i], axis=0) )
+#    # Below is only real wishart, not complex
+#    from scipy.stats import wishart
+#    rv_wishart = wishart(df=args.N, scale=np.eye(args.N))
+#    rvs_wishart = rv_wishart.rvs(size=100000)
+#    rvs_wishart_S, _ = np.linalg.eigh(rvs_wishart)
+#    # Below only makes a single matrix instance
+#    from skrmt.ensemble.wishart_ensemble import WishartEnsemble
+#    wre = WishartEnsemble(beta=2, p=args.N, n=args.N, tridiagonal_form=True)
+#    wce = WishartEnsemble(beta=2, p=args.N, n=args.N, tridiagonal_form=True)
+#    print("END")
+
+    # Normalized covariance matrix (probably not valid for singular values?)
+    #cov = np.cov(samples_S.T)
+    #cov = np.corrcoef(samples_S.T)
+
+    # Complex wishart eigenvalue distribution
+    def wishart_eig_pdf(x, n=None):
+        def mv_gamma(m, n):
+            out = np.pi**(m*(m-1)/2.0)
+            for i in range(1, m+1):
+                out *= scipy.special.gamma(n - i + 1)
+            return out
+
+        if n is None:
+            n = x.shape[0]
+        m = x.shape[-1]
+        
+        f = 2**(-m*n) * np.pi**(m*(m-1)) / ( mv_gamma(m, n) * mv_gamma(m, m) )
+        f *= np.exp(-0.5 * np.sum(x, axis=-1)) * np.prod(x**(n-m), axis=-1)
+        for i in range(m):
+            for j in range(m):
+                if i < j:
+                    f *= (x[:,i] - x[:,j])**2
+        return f
+    
+    # Below is definitely wrong and not the pdf of the eigenvalues 
+    def normal_svd_pdf(x):
+        n = x.shape[-1]
+        return (1/np.pi**(n*2)) * np.prod( np.exp(-x**2), axis=-1)
+    
     # Calculate TDE (function is not smooth enough for tvd)
     #from scipy.integrate import nquad
     #start = time.time()
@@ -168,41 +334,220 @@ if __name__ == '__main__':
     #end = time.time()
     #print("Calculate tvd integral took", end-start)
 
-    def tvd_integral(x):
-        return np.abs(rv_normal.pdf(x) - kde1.pdf(x))
-    start = time.time()
-    tvd = 0.5 * mc_integrate(func = tvd_integral, func_domain = domain_hypercube, a = -3, b = 3, dim = stride*stride, n = 500000) #2000000)
-    end = time.time()
-    print("Calculate tvd integral took", end-start)
-    
-    from KDEpy import NaiveKDE, TreeKDE, FFTKDE
-    start = time.time()
-    #kde2 = FFTKDE(kernel='gaussian', bw=0.2).fit(samples_scaled)
-    #kde2 = TreeKDE( kernel='gaussian', bw=np.power(args.num_ensembles, -0.2) ).fit(samples_scaled)
-    kde2 = NaiveKDE( kernel='gaussian', bw=np.power(args.num_ensembles, -0.2) ).fit(samples_scaled)
-    end = time.time()
-    print("KDEpy kde took", end-start)
-    #x_lin = np.linspace(-1, 1, 5)
-    #grid = np.meshgrid(*([x_lin] * (stride*stride)), indexing='ij')
-    #x = np.vstack(list(map(np.ravel, grid)) ).T
-    #y = kde2.evaluate(x)
-    # How to make this correct?
-    #x, y = kde2.evaluate() #evaluate(50) #evaluate(x)
+    def transformation(x):
+        #return x
+        return np.log(x)
 
+    def inv_transformation(x):
+        #return x
+        return np.exp(x)
+
+    def det_jacobian(x):
+        #return 1
+        return 1.0 / np.prod(x, axis=-1)
+
+    if args.kde1: 
+        # NOTE: in asymptotics, bw: h->0 as samples: n->inf. Rate of convergence has to be chosen carefully,
+        # but is usually h \propto n^(-1/5) = n^(-0.2)
+        from statsmodels.nonparametric.kernel_density import KDEMultivariate
+        start = time.time()
+        # bw='cv_ml' bw='normal_reference' # bw=[0.2] * (stride*stride) bw = [np.power(args.num_ensembles, -0.2)] * (stride*stride)
+        kde1 = KDEMultivariate(data=transformation(samples_S), var_type='c' * stride, bw='cv_ml')
+        kde1_cnorm = KDEMultivariate(data=transformation(rvs_cnorm_S), var_type='c' * stride, bw='cv_ml')
+        end = time.time()
+        print("statsmodels kde took", end-start)
+
+    if args.tvd1:
+        def tvd1_integral(x):
+            x_transformed = transformation(x)
+            #return np.abs(rv_normal.pdf(x) - kde1.pdf(x))
+            #return np.abs(normal_svd_pdf(x) - kde1.pdf(x))
+            #return np.abs(wishart_eig_pdf(x, stride) - kde1.pdf(x))
+            #return np.abs(kde1_cnorm.pdf(x) - kde1.pdf(x))
+            return np.abs( (kde1_cnorm.pdf(x_transformed) - kde1.pdf(x_transformed))*det_jacobian(x) )
+        #n_cycles = np.array([1000000, 2000000, 3000000, 4000000, 5000000])
+        n_cycles = np.array([1000000])
+        
+        tvd1 = np.zeros(len(n_cycles))
+        start = time.time()
+        for i, n in enumerate(n_cycles):
+            tvd1[i] = 0.5 * mc_integrate(func = tvd1_integral, 
+                                         func_domain = domain_hypercube, 
+                                         a = min( np.min(rvs_cnorm_S), np.min(samples_S) ), 
+                                         b = max( np.max(rvs_cnorm_S), np.max(samples_S) ), 
+                                         dim = stride, 
+                                         n = n)
+        end = time.time()
+        print("Calculate tvd1 integral took", end-start)
+        print(f"tvd1 = {tvd1}")
+
+        from scipy.integrate import nquad
+        def bounds(*args):
+            integration_number = len(args) + 1
+            num_integrals = samples_S.shape[-1]
+            counter = num_integrals - integration_number
+            bound_lower = min( np.min(rvs_cnorm_S, axis=0)[counter], np.min(samples_S, axis=0)[counter] )
+            bound_upper =  max( np.max(rvs_cnorm_S, axis=0)[counter], np.max(samples_S, axis=0)[counter] )
+            return [bound_lower, bound_upper]
+        def tvd1_integral_nquad(*args):
+            x = np.asarray(args)
+            x_transformed = transformation(x)
+            return np.abs( (kde1_cnorm.pdf(x_transformed) - kde1.pdf(x_transformed))*det_jacobian(x) )
+        #start = time.time()
+        #tvd1_nquad = nquad(tvd1_integral_nquad, [bounds, bounds], full_output=True)
+        #end = time.time()
+        #print("Calculate tvd1 integral nquad took", end-start)
+        #print(f"tvd1_nquad = {tvd1_nquad}")
+
+
+    if args.kde2: 
+        from KDEpy import NaiveKDE, TreeKDE, FFTKDE
+        start = time.time()
+        kde2 = NaiveKDE( kernel='gaussian', bw=np.power(samples_S.shape[0], -0.2) ).fit(transformation(samples_S))
+        kde2_cnorm = NaiveKDE( kernel='gaussian', bw=np.power(rvs_cnorm_S.shape[0], -0.2) ).fit(transformation(rvs_cnorm_S))
+        end = time.time()
+        print("KDEpy kde took", end-start)
+
+    if args.tvd2:
+        def tvd2_integral(x):
+            x_transformed = transformation(x)
+            #return np.abs(rv_normal.pdf(x) - kde2.evaluate(x))
+            #return np.abs(normal_svd_pdf(x) - kde2.evaluate(x))
+            #return np.abs(wishart_eig_pdf(x, stride) - kde2.evaluate(x))
+            #return np.abs(kde2_cnorm.evaluate(x) - kde2.evaluate(x))
+            return np.abs( (kde2_cnorm.evaluate(x_transformed) - kde2.evaluate(x_transformed))*det_jacobian(x) )
+        #n_cycles = np.array([1000000, 2000000, 3000000, 4000000, 5000000])
+        n_cycles = np.array([1000000])
+        tvd2 = np.zeros(len(n_cycles))
+        start = time.time()
+        for i, n in enumerate(n_cycles):
+            tvd2[i] = 0.5 * mc_integrate(func = tvd2_integral, 
+                                         func_domain = domain_hypercube, 
+                                         a = min( np.min(rvs_cnorm_S), np.min(samples_S) ), 
+                                         b = max( np.max(rvs_cnorm_S), np.max(samples_S) ), 
+                                         dim = stride, 
+                                         n = n)
+        end = time.time()
+        print("Calculate tvd2 integral took", end-start)
+        print(f"tvd2 = {tvd2}")
+        
+#        def tvd2_integral_nquad(*args):
+#            x = [np.asarray(args)]
+#            x_transformed = transformation(x)
+#            return np.abs( (kde2_cnorm.evaluate(x_transformed) - kde2.evaluate(x_transformed))*det_jacobian(x) )
+#        start = time.time()
+#        tvd2_nquad = nquad(tvd2_integral_nquad, [bounds, bounds], full_output=True)
+#        end = time.time()
+#        print("Calculate tvd2 integral nquad took", end-start)
+#        print(f"tvd2_nquad = {tvd2_nquad}")
+
+    from KDEpy import FFTKDE
     start = time.time()
-    def tvd_integral2(x):
-        return np.abs(rv_normal.pdf(x) - kde2.evaluate(x))
-    tvd2 = 0.5 * mc_integrate(func = tvd_integral2, func_domain = domain_hypercube, a = -3, b = 3, dim = stride*stride, n = 500000) #2000000)
+    kde_fft = FFTKDE( kernel='gaussian', bw=np.power(samples_S.shape[0], -0.2) ).fit(transformation(samples_S))
+    kde_fft_cnorm = FFTKDE( kernel='gaussian', bw=np.power(rvs_cnorm_S.shape[0], -0.2) ).fit(transformation(rvs_cnorm_S))
     end = time.time()
-    print("Calculate tvd2 integral took", end-start)
+    print("Calculate kde_fft took", end-start)
+
+    def get_x_grid(npoints=4096, indexing='ij'):
+        def round_to_n(x, n=1, kind='round'):
+            import math
+            exponent = -int(math.floor(math.log10(abs(x)))) + (n - 1)
+            if kind == 'round':
+                return math.round(x * 10**exponent) / 10**exponent
+            if kind == 'floor':
+                return math.floor(x * 10**exponent) / 10**exponent
+            if kind == 'ceil':
+                return math.ceil(x * 10**exponent) / 10**exponent
+        
+        num_features = samples_S.shape[-1]
+        x_linear = []
+        for i in range(num_features):
+            bound_lower = round_to_n(min( np.min(rvs_cnorm_S, axis=0)[i], np.min(samples_S, axis=0)[i] ), kind='floor')
+            bound_upper = round_to_n(max( np.max(rvs_cnorm_S, axis=0)[i], np.max(samples_S, axis=0)[i] ), kind='ceil')
+            x_linear.append( np.linspace(bound_lower, bound_upper, npoints, endpoint=True) )
+        dx = []
+        for i in range(num_features):
+            dx.append( (x_linear[i][-1] - x_linear[i][0]) / (npoints-1) )
+        x_mesh = np.meshgrid(*x_linear, indexing=indexing)
+        x = np.reshape(x_mesh, (num_features, -1)).T
+        #x = inv_transformation(y)
+        return x_mesh, x, dx
+
+    def fft_density(kde, x, fnc, fnc_det_jacobian):
+        return kde.evaluate(fnc(x)) * np.abs( fnc_det_jacobian(x) )
+    
+    def tvd_integral_fft(density1, density2, dx):
+        integrand = np.abs( density1 - density2 ) * np.prod(dx)
+        return np.sum(integrand)
+    
+    npoints = [2**n for n in range(10,14)]
+    tvd_fft = np.zeros(len(npoints))
+    start = time.time()
+    for i, n in enumerate(npoints):
+        x_mesh, x, dx = get_x_grid(n)
+        density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
+        density_cnorm = fft_density(kde=kde_fft_cnorm, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
+        tvd_fft[i] = tvd_integral_fft(density1=density, density2=density_cnorm, dx=dx)
+    end = time.time()
+    print("Calculate tvd_fft integral took", end-start)
+    print(f"tvd_fft = {tvd_fft}")
 
     # Test independence of random variables
     from sklearn.feature_selection import mutual_info_regression
     print()
     print("Independence tests:")
-    for i in range(stride*stride):
-        print(f"i={i}: {mutual_info_regression( samples_scaled, samples_scaled[:,i]) }")
+    for i in range(stride):
+        print(f"i={i}: {mutual_info_regression( samples_S, samples_S[:,i]) }")
             
-    # Plots
-    model.plot_matrix(save=args.save_plots, show=args.show_plots, scale_width=args.scale_width, t_idx=t_idx, vmin=-0.2, vmax=0.2, vmax_abs=vmax_abs)
-    model.plot_submatrix(save=args.save_plots, show=args.show_plots, scale_width=args.scale_width, t_idx=t_idx, ix=ix, iy=iy, stride=stride, vmin=-0.05, vmax=0.05, vmax_abs=vmax_abs)
+#    # TODO: 
+#    # calculate tvd as a function of num_ensembles and scale to -> inf
+#    # calculate tvd for various N's, and scale to -> inf
+#    # do a independence test of random variables (Hilbert-Schmidt Independence Criterion (HSIC)? Or mutual information? Distance correlation/distance covariance?)
+#    # Theoretical best rate for KDE convergence is O(n^(-4 / (4+d))), n is number of samples, d is dimension
+#    #    in Combinatorial Methods in Density Estimation Ch 5, Ch 9, Ch 11, Ch 14. Ch 5 has something about
+#    #    invariance of TVD under monotone transformations?
+    
+    if stride == 2:
+        import seaborn as sns
+        import pandas as pd
+        #df = pd.DataFrame(list(zip(samples_S[:,0], samples_S[:,1])), columns=['s1', 's2'])
+        #df_cnorm = pd.DataFrame(list(zip(rvs_cnorm_S[:,0], rvs_cnorm_S[:,1])), columns=['s1_cnorm', 's2_cnorm'])
+        x = transformation(samples_S)
+        x_norm = transformation(rvs_cnorm_S)
+        df = pd.DataFrame(list(zip(x[:,0], x[:,1])), columns=['s1', 's2'])
+        df_cnorm = pd.DataFrame(list(zip(x_norm[:,0], x_norm[:,1])), columns=['s1_cnorm', 's2_cnorm'])
+
+
+        fig = plt.figure(figsize=(13,8))
+        gs = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+
+        xmin = min(np.min(x[:,0]), np.min(x_norm[:,0]))
+        xmax = max(np.max(x[:,0]), np.max(x_norm[:,0]))
+        ymin = min(np.min(x[:,1]), np.min(x_norm[:,1]))
+        ymax = max(np.max(x[:,1]), np.max(x_norm[:,1]))
+
+        g0 = sns.jointplot(data=df, x='s1', y='s2', xlim=[xmin,xmax], ylim=[ymin,ymax])
+        g1 = sns.jointplot(data=df, x='s1', y='s2', xlim=[xmin,xmax], ylim=[ymin,ymax], kind='kde', fill=True, cbar=True)
+        #sns.kdeplot(data=df, x='s1', y='s2', fill=True)
+        
+        g2 = sns.jointplot(data=df_cnorm, x='s1_cnorm', y='s2_cnorm', xlim=[xmin,xmax], ylim=[ymin,ymax])
+        g3 = sns.jointplot(data=df_cnorm, x='s1_cnorm', y='s2_cnorm', xlim=[xmin,xmax], ylim=[ymin,ymax], kind='kde', fill=True, cbar=True)
+        #sns.kdeplot(data=df_cnorm, x='s1_cnorm', y='s2_cnorm', fill=True)
+
+        mg0 = SeabornFig2Grid(g0, fig, gs[0])
+        mg1 = SeabornFig2Grid(g1, fig, gs[1])
+        mg2 = SeabornFig2Grid(g2, fig, gs[2])
+        mg3 = SeabornFig2Grid(g3, fig, gs[3])
+
+        #gs.tight_layout(fig)
+
+        plt.show()
+        
+        x_mesh, x, dx = get_x_grid(npoints=100)
+        density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
+        density_cnorm = fft_density(kde=kde_fft_cnorm, y=y, x=x, fnc_det_jacobian=det_jacobian)
+
+        #cs = plt.contourf(*x_mesh, density.reshape(x_mesh[0].shape), vmin=0, vmax=np.max(density))
+        cs = plt.contourf(*x_mesh, density.reshape(x_mesh[0].shape))
+        cbar = fig.colorbar(cs)
+        plt.show()
