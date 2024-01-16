@@ -25,6 +25,16 @@ def vec(A):
     p = A.shape[-2]
     q = A.shape[-1]
     return A.reshape(-1, p*q)
+        
+def round_to_n(x, n=1, kind='round'):
+    import math
+    exponent = -int(math.floor(math.log10(abs(x)))) + (n - 1)
+    if kind == 'round':
+        return math.round(x * 10**exponent) / 10**exponent
+    if kind == 'floor':
+        return math.floor(x * 10**exponent) / 10**exponent
+    if kind == 'ceil':
+        return math.ceil(x * 10**exponent) / 10**exponent
 
 def mle_adjust(n, sigma_squared, S):
     eta = S[0,0] / (n*sigma_squared)
@@ -210,8 +220,8 @@ if __name__ == '__main__':
     
     # Set time to Heisenberg time
     t_heis = model.heisenberg_time()
-    time_arr = np.array([t_heis])
-    #time_arr = np.array([1000])
+    #time_arr = np.array([t_heis])
+    time_arr = np.array([1e8])
         
     t_idx = -1 #299
     ix = 0
@@ -244,10 +254,20 @@ if __name__ == '__main__':
     from randomgen import ExtendedGenerator
     eg = ExtendedGenerator()
     n = samples.shape[0]
-    n = 1_000_000
-    n = 10000
+    #n = 1_000_000
+    #n = 100_000
+    #n = 10_000
+    #n = 1_000
     rvs_cnorm = eg.multivariate_complex_normal(loc=[0] * (stride*stride), gamma=np.eye(stride*stride), size=n).reshape(n, stride, stride)
-    samples = eg.multivariate_complex_normal(loc=[0] * (stride*stride), gamma=np.eye(stride*stride), size=n).reshape(n, stride, stride)
+
+    # FIXME FOR TESTING
+    # Check against normal (works, but not very well if do log(x) transform)
+    #samples = eg.multivariate_complex_normal(loc=[0] * (stride*stride), gamma=np.eye(stride*stride), size=n).reshape(n, stride, stride)
+    # Check against Haar (works, but not very well if do log(x) transform)
+    #from scipy.stats import unitary_group
+    #M = 30
+    #U = unitary_group.rvs(M, size=n)
+    #samples = U[:, ix:ix+stride, iy:iy+stride] * np.sqrt(M)
 
     # Complex case should be same as above
     #rng = np.random.default_rng()
@@ -335,20 +355,20 @@ if __name__ == '__main__':
     #print("Calculate tvd integral took", end-start)
 
     def transformation(x):
-        #return x
-        return np.log(x)
+        return x
+        #return np.log(x)
 
     def inv_transformation(x):
-        #return x
-        return np.exp(x)
+        return x
+        #return np.exp(x)
 
     def det_jacobian(x):
-        #return 1
-        return 1.0 / np.prod(x, axis=-1)
+        return np.ones(x.shape[0])
+        #return 1.0 / np.prod(x, axis=-1)
 
     if args.kde1: 
         # NOTE: in asymptotics, bw: h->0 as samples: n->inf. Rate of convergence has to be chosen carefully,
-        # but is usually h \propto n^(-1/5) = n^(-0.2)
+        # but is usually h \propto n^(-1/5) = n^(-0.2) for univariate
         from statsmodels.nonparametric.kernel_density import KDEMultivariate
         start = time.time()
         # bw='cv_ml' bw='normal_reference' # bw=[0.2] * (stride*stride) bw = [np.power(args.num_ensembles, -0.2)] * (stride*stride)
@@ -443,27 +463,23 @@ if __name__ == '__main__':
 
     from KDEpy import FFTKDE
     start = time.time()
+    # bw = 'scott' ? 'silvermann' ?
     kde_fft = FFTKDE( kernel='gaussian', bw=np.power(samples_S.shape[0], -0.2) ).fit(transformation(samples_S))
     kde_fft_cnorm = FFTKDE( kernel='gaussian', bw=np.power(rvs_cnorm_S.shape[0], -0.2) ).fit(transformation(rvs_cnorm_S))
     end = time.time()
     print("Calculate kde_fft took", end-start)
 
-    def get_x_grid(npoints=4096, indexing='ij'):
-        def round_to_n(x, n=1, kind='round'):
-            import math
-            exponent = -int(math.floor(math.log10(abs(x)))) + (n - 1)
-            if kind == 'round':
-                return math.round(x * 10**exponent) / 10**exponent
-            if kind == 'floor':
-                return math.floor(x * 10**exponent) / 10**exponent
-            if kind == 'ceil':
-                return math.ceil(x * 10**exponent) / 10**exponent
-        
-        num_features = samples_S.shape[-1]
+    def get_x_grid(samples, npoints=4096, indexing='ij'):
+        num_features = samples[0].shape[-1]
         x_linear = []
         for i in range(num_features):
-            bound_lower = round_to_n(min( np.min(rvs_cnorm_S, axis=0)[i], np.min(samples_S, axis=0)[i] ), kind='floor')
-            bound_upper = round_to_n(max( np.max(rvs_cnorm_S, axis=0)[i], np.max(samples_S, axis=0)[i] ), kind='ceil')
+            bound_lower = np.inf
+            bound_upper = -np.inf
+            for s in samples:
+                bound_lower = min(bound_lower, np.min(s, axis=0)[i])
+                bound_upper = max(bound_upper, np.max(s, axis=0)[i])
+            bound_lower = round_to_n(bound_lower, n=5, kind='floor')
+            bound_upper = round_to_n(bound_upper, n=5, kind='ceil')
             x_linear.append( np.linspace(bound_lower, bound_upper, npoints, endpoint=True) )
         dx = []
         for i in range(num_features):
@@ -471,20 +487,22 @@ if __name__ == '__main__':
         x_mesh = np.meshgrid(*x_linear, indexing=indexing)
         x = np.reshape(x_mesh, (num_features, -1)).T
         #x = inv_transformation(y)
-        return x_mesh, x, dx
+        return x_mesh, x, x_linear, dx
+
 
     def fft_density(kde, x, fnc, fnc_det_jacobian):
-        return kde.evaluate(fnc(x)) * np.abs( fnc_det_jacobian(x) )
+        return kde.evaluate(fnc(x)) * fnc_det_jacobian(x)
     
     def tvd_integral_fft(density1, density2, dx):
-        integrand = np.abs( density1 - density2 ) * np.prod(dx)
+        integrand = 0.5 * np.abs( density1 - density2 ) * np.prod(dx)
         return np.sum(integrand)
     
     npoints = [2**n for n in range(10,14)]
+    #npoints = [2**n for n in range(10,11)]
     tvd_fft = np.zeros(len(npoints))
     start = time.time()
     for i, n in enumerate(npoints):
-        x_mesh, x, dx = get_x_grid(n)
+        x_mesh, x, x_linear, dx = get_x_grid(samples=[rvs_cnorm_S, samples_S], npoints=n)
         density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
         density_cnorm = fft_density(kde=kde_fft_cnorm, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
         tvd_fft[i] = tvd_integral_fft(density1=density, density2=density_cnorm, dx=dx)
@@ -498,6 +516,7 @@ if __name__ == '__main__':
     print("Independence tests:")
     for i in range(stride):
         print(f"i={i}: {mutual_info_regression( samples_S, samples_S[:,i]) }")
+    print()
             
 #    # TODO: 
 #    # calculate tvd as a function of num_ensembles and scale to -> inf
@@ -513,18 +532,18 @@ if __name__ == '__main__':
         #df = pd.DataFrame(list(zip(samples_S[:,0], samples_S[:,1])), columns=['s1', 's2'])
         #df_cnorm = pd.DataFrame(list(zip(rvs_cnorm_S[:,0], rvs_cnorm_S[:,1])), columns=['s1_cnorm', 's2_cnorm'])
         x = transformation(samples_S)
-        x_norm = transformation(rvs_cnorm_S)
+        x_cnorm = transformation(rvs_cnorm_S)
         df = pd.DataFrame(list(zip(x[:,0], x[:,1])), columns=['s1', 's2'])
-        df_cnorm = pd.DataFrame(list(zip(x_norm[:,0], x_norm[:,1])), columns=['s1_cnorm', 's2_cnorm'])
+        df_cnorm = pd.DataFrame(list(zip(x_cnorm[:,0], x_cnorm[:,1])), columns=['s1_cnorm', 's2_cnorm'])
 
 
         fig = plt.figure(figsize=(13,8))
         gs = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
 
-        xmin = min(np.min(x[:,0]), np.min(x_norm[:,0]))
-        xmax = max(np.max(x[:,0]), np.max(x_norm[:,0]))
-        ymin = min(np.min(x[:,1]), np.min(x_norm[:,1]))
-        ymax = max(np.max(x[:,1]), np.max(x_norm[:,1]))
+        xmin = min(np.min(x[:,0]), np.min(x_cnorm[:,0]))
+        xmax = max(np.max(x[:,0]), np.max(x_cnorm[:,0]))
+        ymin = min(np.min(x[:,1]), np.min(x_cnorm[:,1]))
+        ymax = max(np.max(x[:,1]), np.max(x_cnorm[:,1]))
 
         g0 = sns.jointplot(data=df, x='s1', y='s2', xlim=[xmin,xmax], ylim=[ymin,ymax])
         g1 = sns.jointplot(data=df, x='s1', y='s2', xlim=[xmin,xmax], ylim=[ymin,ymax], kind='kde', fill=True, cbar=True)
@@ -541,13 +560,76 @@ if __name__ == '__main__':
 
         #gs.tight_layout(fig)
 
-        plt.show()
-        
-        x_mesh, x, dx = get_x_grid(npoints=100)
-        density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
-        density_cnorm = fft_density(kde=kde_fft_cnorm, y=y, x=x, fnc_det_jacobian=det_jacobian)
 
-        #cs = plt.contourf(*x_mesh, density.reshape(x_mesh[0].shape), vmin=0, vmax=np.max(density))
-        cs = plt.contourf(*x_mesh, density.reshape(x_mesh[0].shape))
+        fig2 = plt.figure()
+        
+        #n = 1000
+        #x_mesh, x, x_linear, dx = get_x_grid(samples=[rvs_cnorm_S, samples_S], npoints=n)
+        #y = transformation(x)
+        #y_mesh = transformation(x_mesh)
+        #y_linear = inv_transformation(x_linear)
+        
+        n = 1000
+        y_mesh, y, y_linear, dy = get_x_grid(samples=transformation([rvs_cnorm_S, samples_S]), npoints=n)
+        x = inv_transformation(y)
+        x_mesh = inv_transformation(y_mesh)
+        x_linear = inv_transformation(y_linear)
+        
+        density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
+        density_cnorm = fft_density(kde=kde_fft_cnorm, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian)
+        density = np.reshape(density, (n, n))
+        density_cnorm = np.reshape(density_cnorm, (n, n))
+        diff = density - density_cnorm
+        
+        levels = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+        cs = plt.contourf(*x_mesh, density, levels=levels)
         cbar = fig.colorbar(cs)
         plt.show()
+
+        from scipy.integrate import simps
+        check_norm_x = simps([simps(zz_x, x_linear[0]) for zz_x in density], x_linear[1])  # should be 1
+        check_norm_y = simps([simps(zz_x, y_linear[0]) for zz_x in density / det_jacobian(x).reshape(density.shape)], y_linear[1])  # should be 1
+        tvd_test = 0.5 * simps([simps(zz_x, x_linear[0]) for zz_x in np.abs(diff)], x_linear[1])
+        print(f"norm_x = {check_norm_x}")
+        print(f"norm_y = {check_norm_y}")
+        print(f"tvd_test = {tvd_test}")
+        print()
+
+#        x_mesh, x, x_linear, dx = get_x_grid(samples=[np.array([[1e-12,1e-12],[12,12]])], npoints=n)
+#        # singular values should be sorted, so only care about about diagonal
+#        idx = (x[:,0] >= x[:,1]).T.reshape(x_mesh[0].shape)
+#        z = wishart_eig_pdf(np.array( x ), n=2).T.reshape(x_mesh[0].shape)
+#        z[idx] = None
+#        check_norm_x = simps([simps(zz_x, x_linear[0]) for zz_x in np.where(np.isnan(z), 0, z)], x_linear[1]) 
+#        print(f"norm_wishart = {check_norm_x}")
+#        cs = plt.contourf(*x_mesh, z)
+#        cbar = fig.colorbar(cs)
+#        plt.show()
+
+#        from scipy.stats import gaussian_kde
+#        levels = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+#        kde = gaussian_kde(np.log(samples_S.T))
+#        xmin = np.log(samples_S[:,0]).min()
+#        ymin = np.log(samples_S[:,1]).min()
+#        ymax = np.log(samples_S[:,1]).max()
+#        xmax = np.log(samples_S[:,0]).max()
+#        X, Y = np.mgrid[xmin:xmax:1000j, ymin:ymax:1000j]
+#        positions = np.vstack([X.ravel(), Y.ravel()])
+#        Z = np.reshape(kde(positions).T, X.shape)
+#        print(simps([simps(zz_x, X[:,0]) for zz_x in Z], Y[0]))
+#        cs = plt.contourf(np.exp(X), np.exp(Y), Z / np.reshape(np.prod(np.exp(positions), axis=0).T, X.shape), levels=levels )
+#        cbar = fig.colorbar(cs)
+#        plt.show()
+#
+#        kde = gaussian_kde(np.log(samples_S.T))
+#        xmin = samples_S[:,0].min()
+#        ymin = samples_S[:,1].min()
+#        ymax = samples_S[:,1].max()
+#        xmax = samples_S[:,0].max()
+#        X, Y = np.mgrid[xmin:xmax:1000j, ymin:ymax:1000j]
+#        positions = np.vstack([X.ravel(), Y.ravel()])
+#        Z = np.reshape(kde(np.log(positions)).T, X.shape) / np.reshape(np.prod(positions, axis=0).T, X.shape)
+#        print(simps([simps(zz_x, X[:,0]) for zz_x in Z], Y[0]))
+#        cs = plt.contourf(X, Y, Z, levels=levels )
+#        cbar = fig.colorbar(cs)
+#        plt.show()
