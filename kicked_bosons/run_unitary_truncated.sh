@@ -2,9 +2,10 @@
 
 njobs=10
 # Source any environment stuff you need
-#source $HOME/miniforge3/etc/profile.d/conda.sh
-source /etc/profile.d/conda.sh
-conda activate quantum-chaos
+#source /etc/profile.d/conda.sh
+#conda activate quantum-chaos
+source $HOME/miniforge3-qist/etc/profile.d/conda.sh
+conda activate quantum-chaos-miniforge
 
 # Export any variables that you want the bash function to be able to see
 export exec_folder=${HOME}/GitHub/quantum-chaos/kicked_bosons

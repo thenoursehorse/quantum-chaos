@@ -2,8 +2,10 @@
 
 njobs=10
 # Source environment
-source /etc/profile.d/conda.sh
-conda activate quantum-chaos
+#source /etc/profile.d/conda.sh
+#conda activate quantum-chaos
+source $HOME/miniforge3-qist/etc/profile.d/conda.sh
+conda activate quantum-chaos-miniforge
 
 export exec_folder=${HOME}/GitHub/quantum-chaos/kicked_bosons
 export root_folder=/scratch/NemotoU/henry/quantum-chaos/kicked_bosons
