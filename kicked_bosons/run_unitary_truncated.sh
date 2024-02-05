@@ -46,7 +46,7 @@ unitary_truncated() {
     -WOmega ${WOmega} \
     -time ${timee} \
     -root_folder ${root_folder} \
-    -save_data 1 \
+    -save_data \
 	  &> ${outfile}
 }
 # You must export the function for the shell script to know about it

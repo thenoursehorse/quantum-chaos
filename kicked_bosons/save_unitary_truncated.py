@@ -82,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('-time', type=str, default='1e12')
     
     parser.add_argument('-root_folder', type=str, default='./data/')
-    parser.add_argument('-save_data', type=int, default=0)
+    parser.add_argument('-save_data', action=argparse.BooleanOptionalAction, default=False)
     
     args = parser.parse_args()
     print(vars(args))
