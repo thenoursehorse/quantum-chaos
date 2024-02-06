@@ -122,7 +122,7 @@ if __name__ == '__main__':
             case 'kicked-boson':
                 print('Calculating for a kicked boson distribution')
                 
-                folder = args.root_folder + "/" + get_time_str(args.time) + "/"
+                folder = args.root_folder + "/" + "t_" + get_time_str(args.time) + "/"
                 filename = folder + f'/thetaOmega{args.thetaOmega:.2f}WOmega{args.WOmega:.2f}_Utrunc.h5'
                 
                 rng = np.random.default_rng()
