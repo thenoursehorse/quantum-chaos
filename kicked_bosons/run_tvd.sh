@@ -22,6 +22,7 @@ M_haar_arr=(2 5 10 15 20 30 40 50 75 100)
 M_boson_arr=(10 20 50 100 200 300)
 #M_boson_arr=(10 20 50 100 200 300 400 500)
 theta_W_pairs=("7.4 7" "7.4 3.5" "7.4 2" "18 3" "20 0.5")
+time_arr=($((10**12)) "heisenberg")
 
 normal() {
   outfile=tvd_normal.out
