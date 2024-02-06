@@ -15,6 +15,7 @@ from randomgen import ExtendedGenerator
 from quantum_chaos.stats import vec, mase, round_to_n, mle_MNorm, transform_standard_MNorm
 from quantum_chaos.stats import get_x_grid, fft_density, tvd_integral_fft
 
+# tables can be installed via conda install pytables
 import pandas as pd
 import h5py
 
@@ -33,11 +34,11 @@ def det_jacobian(x):
                 
 def get_time_str(timee):                
     if timee == 'heisenberg':
-        return 't_heis'
+        return 'heis'
     elif float(timee) > 1e6:
-        return 't_inf'
+        return 'inf'
     else:
-        return f't_{float(args.time):.2f}'
+        return f'{float(args.time):.2f}'
 
 def h5_wait(h5file, wait=3, max_wait=30):
     
@@ -66,7 +67,7 @@ def h5_wait(h5file, wait=3, max_wait=30):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-M', type=int, default=30)
+    parser.add_argument('-M', type=int, default=20)
     parser.add_argument('-N', type=int, default=2)
     parser.add_argument('-num_ensembles', type=int, default=100)
     parser.add_argument('-num_repeats', type=int, default=1)
