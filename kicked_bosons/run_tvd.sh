@@ -84,4 +84,4 @@ export -f truncated_boson
 
 #normal
 #parallel -j${njobs} truncated_haar ::: "${M_haar_arr[@]}"
-parallel -j${njobs} truncated_boson ::: "${M_arr[@]}" ::: "${time_arr[@]}" ::: "${theta_W_pairs[@]}"
+parallel -j${njobs} truncated_boson ::: "${M_boson_arr[@]}" ::: "${time_arr[@]}" ::: "${theta_W_pairs[@]}"
