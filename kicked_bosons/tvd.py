@@ -218,13 +218,11 @@ if __name__ == '__main__':
                 if h5stat is False:
                     sys.exit('Error: HDF5 File not available')
 
-            print(f"Saving data to '{filename}'")
-            with pd.HDFStore(filename, 'a') as f:
-                
-                key = args.sample_type + "_tvd"
-                if args.sample_type == 'kicked-boson':
-                    key = key + "_t_" + get_time_str(args.time)
-               
+            key = args.sample_type + "_tvd"
+            if args.sample_type == 'kicked-boson':
+                key = key + "_t_" + get_time_str(args.time) + f'_thetaOmega{args.thetaOmega:.2f}WOmega{args.WOmega:.2f}'
+            print(f"Saving data to '{filename}' with key '{key}'")
+            with pd.HDFStore(filename, 'a') as f:               
                 if key in f:
                     df = pd.DataFrame(data=data, columns=columns, index=[f.get_storer(key).nrows])
                     f.append(key=key, value=df)

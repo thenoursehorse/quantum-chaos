@@ -16,7 +16,7 @@ export num_ensembles=100000
 export num_repeats=100
 
 # For truncated haar distribution
-M_haar_arr=(2 5 10 15 20 30 40 50 75 100)
+M_haar_arr=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 30)
 
 # For kicked bosons
 M_boson_arr=(10 20 50 100 200 300)
@@ -83,6 +83,6 @@ truncated_boson() {
 }
 export -f truncated_boson
 
-#normal
-#parallel -j${njobs} truncated_haar ::: "${M_haar_arr[@]}"
+normal
+parallel -j${njobs} truncated_haar ::: "${M_haar_arr[@]}"
 parallel -j${njobs} truncated_boson ::: "${M_boson_arr[@]}" ::: "${time_arr[@]}" ::: "${theta_W_pairs[@]}"
