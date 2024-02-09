@@ -161,11 +161,13 @@ if __name__ == '__main__':
                     P = r'\mathrm{KB}(M=' + str(M) + ')'
             
             x = transform_x(np.linspace(min(num_ensembles), max(num_ensembles), 1000, endpoint=True), fnc_type_x)
+            #x = transform_x(np.linspace(0, max(num_ensembles), 1000, endpoint=True), fnc_type_x)
             y = func(x, *popt)
             plot.scatter(transform_x(num_ensembles, fnc_type_x), transform_y(tvd_data, fnc_type_y), ax_idx=ax_idx, alpha=1, clip_on=False)
             plot.line(x, y, ax_idx=ax_idx)
             plot.axis[ax_idx].set_xlabel(r'$1 / \log(|\mathcal{E}|)$')
             plot.axis[ax_idx].set_ylabel(r'$\log[ TV[{},{}={}] ]$'.format(r'\mathcal{MN}', r'\mathcal{P}', P))
+            #plot.axis[ax_idx].set_xlim(xmin=0)
             
             #x = np.linspace(min(num_ensembles), max(num_ensembles), 1000, endpoint=True)
             #y = inv_transform_y(func(transform_x(x, fnc_type_x), *popt), fnc_type_y)

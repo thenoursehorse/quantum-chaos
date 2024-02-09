@@ -12,7 +12,7 @@ from KDEpy import FFTKDE
 from scipy.stats import unitary_group
 from randomgen import ExtendedGenerator
 
-from quantum_chaos.stats import vec, mase, round_to_n, mle_MNorm, transform_standard_MNorm
+from quantum_chaos.stats import vec, mae, mase, round_to_n, mle_MNorm, transform_standard_MNorm
 from quantum_chaos.stats import get_x_grid, fft_density, tvd_integral_fft
 
 # tables can be installed via conda install pytables
@@ -191,25 +191,38 @@ if __name__ == '__main__':
 
         def func(x, a, b, c):
             return a*x**b + c
-        popt, pcov = scipy.optimize.curve_fit(func, 1/npoints, tvd_fft)
-        tvd = popt[-1]
-        tvd_err = np.sqrt(np.diag(pcov))[-1]
-        tvd_fit = func(1/npoints, *popt)
+        x = 1/np.log(npoints)
+        y = np.log(tvd_fft)
+        popt, pcov = scipy.optimize.curve_fit(func, x, y)
+        popt_err = np.sqrt(np.diag(pcov))
+        tvd = np.exp(popt[-1])
+        tvd_err = np.exp(popt_err[-1])
+        tvd_fit = np.exp(func(x, *popt))
+        tvd_mae = mae(tvd_fft, tvd_fit)
         tvd_mase = mase(tvd_fft, tvd_fit)
+        
+        print("transform_x :", '1/log', "transform_y :", 'log')
+        print("Parameters for fit function a * x + b :", popt, "+-", popt_err)
+        print("tvd:", tvd)
+        print("tvd_mae :", tvd_mae)
+        #print("tvd_mase :", tvd_mase)
 
         if args.show_plots:
-            npoints_x = np.linspace(0, max(1/npoints))
             fig, ax = plt.subplots()
-            ax.plot(1/npoints, tvd_fft, 'o-')
-            ax.plot(npoints_x, func(npoints_x, *popt), 'g--')
+            
+            #xgrid = np.linspace(min(x), max(x), 1000, endpoint=True)
+            xgrid = np.linspace(0, max(x), 1000, endpoint=True)
+            ax.plot(x, y, 'o-')
+            ax.plot(xgrid, func(xgrid, *popt), 'g--')
+            
             ax.set_xlim(xmin=0)
-            ax.set_xlabel(r'1/grid size')
+            ax.set_xlabel(r'$1/\log(n)$')
             ax.set_ylabel(r'$TV(\mathcal{MN},\mathcal{P})$')
             plt.show()
         
         if args.save_data:
-            columns = ['M', 'N', 'Nsamp', 'tvd', 'tvd_err', 'MASE']
-            data = [[args.M, args.N, num_ensembles, tvd, tvd_err, tvd_mase]]
+            columns = ['M', 'N', 'Nsamp', 'tvd', 'tvd_err', 'MAE', 'MASE']
+            data = [[args.M, args.N, num_ensembles, tvd, tvd_err, tvd_mae, tvd_mase]]
             
             filename = args.root_folder + "/tvd.h5"
                 

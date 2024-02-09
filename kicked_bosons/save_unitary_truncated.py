@@ -34,7 +34,7 @@ def h5_wait(h5file, wait=3, max_wait=30):
     h5f.close()
     return True
 
-def get_truncated_unitary(M, N, num_ensembles, theta, theta_disorder, Omega, phi_disorder, eta, eta_disorder, t=1e12):
+def get_truncated_unitary(M, N, num_ensembles, theta, theta_disorder, Omega, phi_disorder, eta, eta_disorder, t=1e12, ix=0, iy=0):
     start = time.time()
     model = KickedBosons(M=M,
                          num_ensembles=num_ensembles,
@@ -58,9 +58,7 @@ def get_truncated_unitary(M, N, num_ensembles, theta, theta_disorder, Omega, phi
     end = time.time()
     print("Time evolve unitaries took", end-start)
     
-    # Take upper left corner of unitaries
-    ix = 0
-    iy = 0
+    # Take truncated part
     return model._Ut[-1][:, ix:ix+args.N, iy:iy+args.N]
 
 if __name__ == '__main__':
@@ -75,6 +73,9 @@ if __name__ == '__main__':
     
     parser.add_argument('-Omega', type=float, default=np.pi/4.0)
     parser.add_argument('-WOmega', type=float, default=2)
+
+    parser.add_argument('-i', type=int, default=0)
+    parser.add_argument('-j', type=int, default=0)
     
     parser.add_argument('-etaOmega', type=float, default=0)
     parser.add_argument('-etaOmega_disorder', type=float, default=0)
@@ -99,7 +100,7 @@ if __name__ == '__main__':
     for i in range(args.num_repeats):
         print(f"Iteration {i+1}/{args.num_repeats}")
 
-        U_trunc = get_truncated_unitary(args.M, args.N, args.num_ensembles, theta, theta_disorder, args.Omega, phi_disorder, eta, eta_disorder, args.time)
+        U_trunc = get_truncated_unitary(args.M, args.N, args.num_ensembles, theta, theta_disorder, args.Omega, phi_disorder, eta, eta_disorder, args.time, args.i, args.j)
                             
         if args.save_data:
             if args.time == 'heisenberg':
@@ -140,3 +141,6 @@ if __name__ == '__main__':
                     size = d.shape[0] + U_trunc.shape[0]
                     d.resize(size, axis=0)
                     d[-U_trunc.shape[0]:] = U_trunc.imag
+
+
+# try to fibonacci stuff!
