@@ -128,10 +128,10 @@ class Plotter(object):
     def linepoints(self, x, y, ax_idx=None, linestyle='-', marker='o', markersize=2, color=None, label=None, alpha=None):
         self.line(x=x, y=y, ax_idx=ax_idx, linestyle=linestyle, marker=marker, markersize=markersize, color=color, label=label, alpha=alpha)
 
-    def scatter(self, x, y, ax_idx=None, marker='o', markersize=5, color=None, label=None, alpha=0.25):
+    def scatter(self, x, y, ax_idx=None, marker='o', markersize=5, color=None, label=None, alpha=0.25, clip_on=None):
         if ax_idx is None:
             ax_idx = 0
-        self._axis[ax_idx].scatter(x=x, y=y, marker=marker, s=markersize, color=color, label=label, alpha=alpha)
+        self._axis[ax_idx].scatter(x=x, y=y, marker=marker, s=markersize, color=color, label=label, alpha=alpha, clip_on=clip_on)
     
     def fill_betweeny(self, x, y_lower, y_upper, ax_idx=None, color='black', label=None, alpha=0.1):
         if ax_idx is None:
