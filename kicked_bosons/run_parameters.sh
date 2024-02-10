@@ -27,7 +27,7 @@ bosons() {
   outfile=bosons_M${M}_num_ensembles${g}_thetaOmega${thetaOmega}_WOmega${WOmega}.out
 
   # This is basically the program I call, with the parameters I set
-  python3 -u ${exec_folder}/make_data.py \
+  python3 -u ${exec_folder}/chaos_plots.py \
     -M ${M} \
     -num_ensembles ${num_ensembles} \
     -thetaOmega ${thetaOmega} \
