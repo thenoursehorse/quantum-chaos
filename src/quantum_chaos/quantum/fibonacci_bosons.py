@@ -101,12 +101,15 @@ class FibonacciBosons(GenericSystem):
         
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
         if calc_eigenvectors:
-            self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
+            self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=complex)
             for m in range(self._num_ensembles):
                 self._eigenenergies[m], self._eigenvectors[m] = self.make_eigenenergies(self._U[m])
         else:
             for m in range(self._num_ensembles):
                 self._eigenenergies[m] = self.make_eigenenergies(self._U[m], return_vecs=False)
+        
+        if calc_H_eff:
+            self.make_H_eff()
 
     def make_H_eff(self, U=None):
         if U is None:
@@ -182,32 +185,31 @@ class FibonacciBosons(GenericSystem):
 
         else:
             # Phase shift angles
-            H0 = scipy.sparse.lil_array( np.diag(phi_list) )
+            H0 = scipy.sparse.lil_array( np.diag(phi_list) , dtype=np.longcomplex)
             
             # Multiport beam splitter
             OffDiagBand = theta_list[:self._M-1]
-            H1 = scipy.sparse.lil_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) )
+            H1 = scipy.sparse.lil_array( np.diag(OffDiagBand, 1) + np.diag(OffDiagBand.conj(), -1) , dtype=np.longcomplex)
             
             if self._periodic:
                 H1[0,-1] = theta_list[-1]
                 H1[-1,0] = theta_list[-1].conj()
 
-            # Exponentiation makes this dense (unless have lots of -inf values), so we might as well store it as dense
-            U0 = scipy.sparse.linalg.expm(-1j*H0).todense()
-            U1 = scipy.sparse.linalg.expm(-1j*H1).todense()
+            U0 = scipy.sparse.linalg.expm(-1j*H0)
+            U1 = scipy.sparse.linalg.expm(-1j*H1)
     
             U0U1 = [U0, U1]
             
         return U0U1
 
     def make_unitary(self):
-        #t = self._rng.integers(low=1, high=len(self._word), endpoint=True)
+        #t = self._rng.integers(low=2, high=len(self._word), endpoint=True)
         t = self._rng.integers(low=len(self._word)/2, high=len(self._word), endpoint=True)
-        U = np.eye(self._U0U1[0].shape[0])
+        U = scipy.sparse.lil_array(np.eye(self._U0U1[0].shape[0]), dtype=np.longcomplex)
         for i in range(t):
             idx = int(self._word[i])
             U = self._U0U1[idx] @ U
-        return U
+        return U.todense()
 
     @property
     def U(self):

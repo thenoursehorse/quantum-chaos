@@ -1,0 +1,234 @@
+import time
+import numpy as np
+import scipy
+import argparse
+import os
+
+import matplotlib.pyplot as plt
+
+from KDEpy import FFTKDE
+from scipy.stats import unitary_group, ortho_group
+from randomgen import ExtendedGenerator
+
+from quantum_chaos.stats import vec, mae, mase, round_to_n, mle_MNorm, transform_standard_MNorm
+from quantum_chaos.stats import get_x_grid, fft_density, tvd_integral_fft
+
+from quantum_chaos.quantum.fibonacci_bosons import FibonacciBosons
+
+# tables can be installed via conda install pytables
+import pandas as pd
+import h5py
+
+# Transformations of probability density function to possibly fix bounds 
+def transformation(x):
+    return x
+    #return np.log(x)
+
+def inv_transformation(x):
+    return x
+    #return np.exp(x)
+
+def det_jacobian(x):
+    return np.ones(x.shape[0])
+    #return 1.0 / np.prod(x, axis=-1)
+                
+def get_time_str(timee):                
+    if timee == 'heisenberg':
+        return 'heis'
+    elif float(timee) > 1e6:
+        return 'inf'
+    else:
+        return f'{float(args.time):.2f}'
+
+def h5_wait(h5file, wait=3, max_wait=30):
+    
+    waited = 0
+
+    while True:
+        try:
+            h5f = h5py.File(h5file,'r')
+            break
+                
+        except FileNotFoundError:
+            print('\nError: HDF5 File not found\n')
+            return False
+        
+        except OSError:   
+            if waited < max_wait:
+                print(f'Warning: HDF5 File locked, sleeping {wait} seconds...')
+                time.sleep(wait) 
+                waited += wait  
+            else:
+                print(f'\nWaited too long = {waited} secs, exiting...\n')
+                return False
+
+    h5f.close()
+    return True
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-M', type=int, default=20)
+    parser.add_argument('-N', type=int, default=2)
+    parser.add_argument('-num_ensembles', type=int, default=100)
+    parser.add_argument('-num_repeats', type=int, default=1)
+    parser.add_argument('-sample_type', type=str, default='fibonacci')
+    
+    parser.add_argument('-thetaOmega', type=float, default=7.4)
+    parser.add_argument('-Omega', type=float, default=np.pi/4.0)
+    parser.add_argument('-time', type=str, default='1e12')
+    
+    parser.add_argument('-root_folder', type=str, default='./data/')
+    parser.add_argument('-random_ensemble_size', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('-show_plots', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('-save_data', action=argparse.BooleanOptionalAction, default=False)
+    args = parser.parse_args()
+    print(vars(args))
+
+    ix = 0
+    iy = 0
+    
+    for i in range(args.num_repeats):
+        print(f"Iteration {i+1}/{args.num_repeats}")
+        
+        if args.random_ensemble_size:
+            num_ensembles = np.random.default_rng().integers(low=500, high=args.num_ensembles, endpoint=True)
+            print(f'num_ensembles from uniform integer distribution: {num_ensembles}')
+        else:
+            num_ensembles = args.num_ensembles
+
+        # Probability distribution to test against
+        eg = ExtendedGenerator()
+        cnorm = eg.multivariate_complex_normal(loc=[0] * (args.N*args.N), 
+                                               gamma=np.eye(args.N*args.N), 
+                                               size=num_ensembles).reshape(num_ensembles, args.N, args.N)
+
+        # Sample of distribution testing
+        match args.sample_type:
+            case 'normal':
+                print('Calculating for a complex matrix normal distribution')
+                samples = eg.multivariate_complex_normal(loc=[0] * (args.N*args.N), 
+                                                         gamma=np.eye(args.N*args.N), 
+                                                         size=num_ensembles).reshape(num_ensembles, args.N, args.N)
+            
+            case 'haar':
+                print('Calculating for a truncated Haar distribution')
+                U = unitary_group.rvs(args.M, size=num_ensembles)
+                samples = U[:, ix:ix+args.N, iy:iy+args.N] * np.sqrt(args.M)
+            
+            case 'ortho':
+                print('Calculating for a truncated orthogonal distribution')
+                U = ortho_group.rvs(args.M, size=num_ensembles)
+                samples = U[:, ix:ix+args.N, iy:iy+args.N] * np.sqrt(args.M)
+            
+            case 'random':
+                print('Calculating for a random distribution')
+                samples = eg.random(( num_ensembles, args.N, args.N ))
+            
+            case 'fibonacci':
+                print('Calculating for a fibonacci distribution')
+                
+                theta = args.thetaOmega / (16.0 * args.Omega)
+                start = time.time()
+                model = FibonacciBosons(M=args.M,
+                                        num_ensembles=args.num_ensembles,
+                                        theta=theta,
+                                        Omega=args.Omega,
+                )
+                end = time.time()
+                print("Unitary construction took", end-start)
+                samples = np.array(model.U)[:, :args.N, :args.N]
+                
+            case _:
+                raise ValueError('Not a valid sample type selection.')
+
+        # Find maximum liklihood estimates (MLE) of the matrix normal parameters
+        mu, Sigma_s, Sigma_c, sigma_squared = mle_MNorm(samples)
+        mu_cnorm, Sigma_s_cnorm, Sigma_c_cnorm, sigma_squared_cnorm = mle_MNorm(cnorm)
+
+        # Transform data to standard normal estimate
+        samples_transformed = transform_standard_MNorm(samples, mu, Sigma_s, Sigma_c)
+        mu_transformed, Sigma_s_transformed, Sigma_c_transformed, sigma_squared_transformed = mle_MNorm(samples_transformed)
+        cnorm_transformed = transform_standard_MNorm(cnorm, mu_cnorm, Sigma_s_cnorm, Sigma_c_cnorm)
+
+        # SVD (squared) of samples (complex Wishart distribution for matrix normal)
+        samples_S, _ = np.linalg.eigh(samples_transformed @ np.swapaxes(samples_transformed.conj(), axis1=-1, axis2=-2))
+        cnorm_S, _ = np.linalg.eigh(cnorm_transformed @ np.swapaxes(cnorm_transformed.conj(), axis1=-1, axis2=-2))
+
+        # Find kernel density estimate 
+        start = time.time()
+        # bw = 'scott' ? 'silvermann' ?
+        kde_fft = FFTKDE( kernel='gaussian', bw=np.power(samples_S.shape[0], -0.2) ).fit(transformation(samples_S))
+        kde_fft_cnorm = FFTKDE( kernel='gaussian', bw=np.power(cnorm_S.shape[0], -0.2) ).fit(transformation(cnorm_S))
+        end = time.time()
+        print("Calculate kde_fft took", end-start)
+        
+        # Calculate tvd on increasingly larger equispaced grid
+        #npoints = np.array([2**n for n in range(10,11)])
+        #npoints = np.array([2**n for n in range(10,12)])
+        #npoints = np.array([2**n for n in range(10,13)])
+        npoints = np.array([2**n for n in range(8,13)])
+        tvd_fft = np.zeros(len(npoints))
+        start = time.time()
+        for i, n in enumerate(npoints):
+            x_mesh, x, x_linear, dx = get_x_grid(samples=[cnorm_S, samples_S], npoints=n)
+            density = fft_density(kde=kde_fft, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian, shape=(n,n))
+            density_cnorm = fft_density(kde=kde_fft_cnorm, x=x, fnc=transformation, fnc_det_jacobian=det_jacobian, shape=(n,n))
+            #tvd_fft[i] = tvd_integral_fft(density1=density, density2=density_cnorm, dx=dx)
+            tvd_fft[i] = tvd_integral_fft(density1=density, density2=density_cnorm, x_linear=x_linear)
+        end = time.time()
+        print("Calculate tvd_fft integral took", end-start)
+        print(f"tvd_fft = {tvd_fft}")
+
+        def func(x, a, b, c):
+            return a*x**b + c
+        x = 1/np.log(npoints)
+        y = np.log(tvd_fft)
+        popt, pcov = scipy.optimize.curve_fit(func, x, y)
+        popt_err = np.sqrt(np.diag(pcov))
+        tvd = np.exp(popt[-1])
+        tvd_err = np.exp(popt_err[-1])
+        tvd_fit = np.exp(func(x, *popt))
+        tvd_mae = mae(tvd_fft, tvd_fit)
+        tvd_mase = mase(tvd_fft, tvd_fit)
+        
+        print("transform_x :", '1/log', "transform_y :", 'log')
+        print("Parameters for fit function a * x + b :", popt, "+-", popt_err)
+        print("tvd:", tvd)
+        print("tvd_mae :", tvd_mae)
+        #print("tvd_mase :", tvd_mase)
+
+        if args.show_plots:
+            fig, ax = plt.subplots()
+            
+            #xgrid = np.linspace(min(x), max(x), 1000, endpoint=True)
+            xgrid = np.linspace(0, max(x), 1000, endpoint=True)
+            ax.plot(x, y, 'o-')
+            ax.plot(xgrid, func(xgrid, *popt), 'g--')
+            
+            ax.set_xlim(xmin=0)
+            ax.set_xlabel(r'$1/\log(n)$')
+            ax.set_ylabel(r'$TV(\mathcal{MN},\mathcal{P})$')
+            plt.show()
+        
+        if args.save_data:
+            columns = ['M', 'N', 'Nsamp', 'tvd', 'tvd_err', 'MAE', 'MASE']
+            data = [[args.M, args.N, num_ensembles, tvd, tvd_err, tvd_mae, tvd_mase]]
+            
+            filename = args.root_folder + "/tvd.h5"
+                
+            if os.path.isfile(filename):
+                h5stat = h5_wait(filename)
+                if h5stat is False:
+                    sys.exit('Error: HDF5 File not available')
+
+            key = args.sample_type + "_tvd"
+            if args.sample_type == 'kicked-boson':
+                key = key + "_t_" + get_time_str(args.time) + f'_thetaOmega{args.thetaOmega:.2f}WOmega{args.WOmega:.2f}'
+            print(f"Saving data to '{filename}' with key '{key}'")
+            with pd.HDFStore(filename, 'a') as f:               
+                if key in f:
+                    df = pd.DataFrame(data=data, columns=columns, index=[f.get_storer(key).nrows])
+                    f.append(key=key, value=df)
+                else:
+                    df = pd.DataFrame(data=data, columns=columns)
+                    f.put(key=key, value=df, format='t')

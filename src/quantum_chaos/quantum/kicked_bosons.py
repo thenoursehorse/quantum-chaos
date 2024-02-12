@@ -92,6 +92,7 @@ class KickedBosons(GenericSystem):
             self.make_operators()
         self._U = [self.make_unitary() for _ in range(self._num_ensembles)]
         self._d = self._U[0].shape[0]
+        
         self._eigenenergies = np.empty(shape=(self._num_ensembles, self._d))
         if calc_eigenvectors:
             self._eigenvectors = np.empty(shape=(self._num_ensembles, self._d, self._d), dtype=np.complex_)
@@ -100,6 +101,7 @@ class KickedBosons(GenericSystem):
         else:
             for m in range(self._num_ensembles):
                 self._eigenenergies[m] = self.make_eigenenergies(self._U[m], return_vecs=False)
+        
         if calc_H_eff:
             self.make_H_eff()
 
